@@ -1,0 +1,4 @@
+$ xauth list :0
+$ xauth add :8 MIT-MAGIC-COOKIE-1 foo…
+$ ./interceptor.pl
+$ DISPLAY=:8 xwininfo
