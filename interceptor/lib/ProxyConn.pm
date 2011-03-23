@@ -11,11 +11,19 @@ use AnyEvent::Socket;
 use AnyEvent::Handle;
 use AnyEvent;
 use Moose;
+use PacketHandler;
 use v5.10;
 
 has 'fh' => (is => 'ro', isa => 'Ref', required => 1);
 has 'client_handle' => (is => 'rw', isa => 'Ref');
 has 'x11_handle' => (is => 'rw', isa => 'Ref', predicate => 'has_x11_handle');
+has 'packet_handler' => (
+    is => 'ro',
+    isa => 'PacketHandler',
+    default => sub {
+        PacketHandler->new
+    }
+);
 
 sub BUILD {
     my ($self) = @_;
@@ -31,6 +39,7 @@ sub BUILD {
                 warn "Closing connection to X11 for this client\n";
                 $self->x11_handle->destroy;
             }
+            $self->packet_handler->client_disconnected;
             $_[0]->destroy;
         },
         on_eof => sub {
@@ -164,16 +173,16 @@ sub _push_client_read {
             my $length = (($words * 4) - 4);
             if ($length == 0) {
                 # request is only 4 bytes long, immediately call _pkt_to_server
-                say "complete, sending now";
+                #say "complete, sending now";
                 $self->_pkt_to_server($handle, $header);
                 $self->_push_client_read;
                 return;
             }
-            say "waiting for length $length";
+            #say "waiting for length $length";
             $handle->push_read(chunk => $length, sub {
                 my ($handle, $request) = @_;
 
-                say "got complete req";
+                #say "got complete req";
                 $self->_pkt_to_server($handle, $header . $request);
                 $self->_push_client_read;
             });
@@ -194,11 +203,11 @@ sub _push_x11_read {
 
             my ($type, $words) = unpack('cx[ccc]L', $packet);
             my $length = ($words * 4);
-            say "additional length = " . $length;
+            #say "additional length = " . $length;
 
             # Only replies (type 1) can have additional bytes
             if ($type != 1 || $length == 0) {
-                say "no additional bytes, sending now";
+                #say "no additional bytes, sending now";
                 $self->_pkt_from_server($x11, $packet);
                 $self->_push_x11_read;
                 return;
@@ -207,7 +216,7 @@ sub _push_x11_read {
             $x11->push_read(chunk => $length, sub {
                 my ($x11, $rest) = @_;
 
-                say "got additional bytes, sending to client";
+                #say "got additional bytes, sending to client";
                 $self->_pkt_from_server($x11, $packet . $rest);
                 $self->_push_x11_read;
             });
@@ -221,37 +230,51 @@ sub _push_x11_read {
 sub _pkt_to_server {
     my ($self, $handle, $packet) = @_;
 
+    my $packet_handler = $self->packet_handler;
+
+    # make sure we are in a burst currently (starts a new one when first invoked)
+    $packet_handler->now_in_burst;
+
     $self->x11_handle->push_write($packet);
 
-    # TODO: dump packet
-
+    $packet_handler->handle_request($packet);
+    $packet_handler->burst_finished() if length($handle->{rbuf}) == 0;
 }
 
 sub _pkt_from_server {
     my ($self, $x11, $packet) = @_;
 
-    say "got packet from server to client";
+    my $packet_handler = $self->packet_handler;
+
+    # make sure we are in a burst currently (starts a new one when first invoked)
+    $packet_handler->now_in_burst;
+
+    #say "got packet from server to client";
     my ($type) = unpack('c', $packet);
 
     # TODO: dump all these
 
     # Error
     if ($type == 0) {
-        say "X11 error";
+        #say "X11 error";
         $self->client_handle->push_write($packet);
+        $self->packet_handler->handle_error($packet);
         return;
     }
 
     # Reply
     if ($type == 1) {
-        say "X11 reply";
+        #say "X11 reply";
         $self->client_handle->push_write($packet);
+        $self->packet_handler->handle_reply($packet);
+        $packet_handler->burst_finished() if length($x11->{rbuf}) == 0;
         return;
     }
 
     # Event
-    say "X11 Event";
+    #say "X11 Event";
     $self->client_handle->push_write($packet);
+    $self->packet_handler->handle_event($packet);
 }
 
 __PACKAGE__->meta->make_immutable;
