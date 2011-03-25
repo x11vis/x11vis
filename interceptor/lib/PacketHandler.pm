@@ -14,16 +14,12 @@ use Moose;
 use JSON::XS;
 use IO::Handle;
 use Time::HiRes qw(gettimeofday tv_interval);
+use Burst;
 use lib qw(gen);
 use RequestDissector;
 use ReplyDissector;
+use FileOutput;
 use v5.10;
-
-has 'History' => (
-    is => 'rw',
-    isa => 'ArrayRef',
-    default => sub { [] },
-);
 
 # mapping of X11 IDs to our own IDs
 has 'x_ids' => (
@@ -40,7 +36,8 @@ has 'x_ids' => (
 
 has 'start_timestamp' => (
     is => 'rw',
-    isa => 'ArrayRef'
+    isa => 'ArrayRef',
+    default => sub { [ gettimeofday ] },
 );
 
 has 'sequence' => (
@@ -65,70 +62,18 @@ has '_outstanding_replies' => (
     }
 );
 
-has 'output_file' => (
+has [ 'child_burst', 'x11_burst' ] => (
     is => 'rw',
-    isa => 'Ref',
-    default => sub {
-        open(my $fh, '>', 'output.json');
-        $fh->autoflush(1);
-        # TODO: don't hardcode
-        print $fh qq|[\n{"type":"cleverness","id":277, "title":"root", "idtype":"window"},\n|;
-        return $fh;
-    }
+    isa => 'Burst',
+    default => sub { Burst->new() }
 );
 
-# XXX: the following two need to be refactored
-has '_in_burst' => (
-    traits => [ 'Bool' ],
-    is => 'rw',
-    isa => 'Bool',
-    default => 0,
-    handles => {
-        start_of_burst => 'set',
-        end_of_burst => 'unset',
-    }
-);
-has '_fresh_burst' => (
-    traits => [ 'Bool' ],
-    is => 'rw',
-    isa => 'Bool',
-    default => 1,
-    handles => {
-        make_burst_fresh => 'set',
-        burst_data_written => 'unset',
-    }
-);
-has '_current_burst' => (is => 'rw', isa => 'Str');
-
-sub BUILD {
-    my ($self) = @_;
-
-    $self->start_timestamp([ gettimeofday ]);
-}
-
-
-sub _new_burst {
-    my ($self) = @_;
-
-    my $elapsed = tv_interval($self->start_timestamp);
-    $self->_current_burst(qq|{"type":"burst", "elapsed":$elapsed, "packets":[|);
-    $self->start_of_burst;
-    $self->make_burst_fresh;
-}
-
-# just dumps to a file at the moment
 sub dump_request {
     my ($self, $data) = @_;
     $data->{type} = 'request';
     $data->{seq} = $self->sequence;
-    $data->{elapsed} = tv_interval($self->start_timestamp(), [ gettimeofday ]);
-    if (!$self->_fresh_burst) {
-        $self->_current_burst($self->_current_burst . ", \n");
-    } else {
-        $self->burst_data_written;
-    }
-    $self->_current_burst($self->_current_burst . encode_json($data));
-
+    $data->{elapsed} = tv_interval($self->start_timestamp());
+    $self->child_burst->add_packet(encode_json($data));
     $self->expect_reply($self->sequence, $data);
     $self->inc_sequence;
 }
@@ -137,26 +82,16 @@ sub dump_reply {
     my ($self, $data) = @_;
 
     $data->{type} = 'reply';
-    $data->{elapsed} = tv_interval($self->start_timestamp(), [ gettimeofday ]);
-    if (!$self->_fresh_burst) {
-        $self->_current_burst($self->_current_burst . ", \n");
-    } else {
-        $self->burst_data_written;
-    }
-    $self->_current_burst($self->_current_burst . encode_json($data));
+    $data->{elapsed} = tv_interval($self->start_timestamp());
+    $self->x11_burst->add_packet(encode_json($data));
 }
 
 sub dump_cleverness {
     my ($self, $data) = @_;
 
     $data->{type} = 'cleverness';
-    $data->{elapsed} = tv_interval($self->start_timestamp(), [ gettimeofday ]);
-    if (!$self->_fresh_burst) {
-        $self->_current_burst($self->_current_burst . ", \n");
-    } else {
-        $self->burst_data_written;
-    }
-    $self->_current_burst($self->_current_burst . encode_json($data));
+    $data->{elapsed} = tv_interval($self->start_timestamp());
+    FileOutput->instance->write(encode_json($data));
 }
 
 sub reply_icing {
@@ -305,26 +240,11 @@ sub handle_event {
     my ($self, $event) = @_;
 }
 
-sub now_in_burst {
-    my ($self) = @_;
-
-    return if $self->_in_burst;
-
-    $self->_new_burst;
-}
-
-sub burst_finished {
-    my ($self) = @_;
-
-    my $fh = $self->output_file;
-    print $fh $self->_current_burst . "]},";
-    $self->end_of_burst;
-}
-
 sub client_disconnected {
     my ($self) = @_;
 
-    my $fh = $self->output_file;
+    my $fo = FileOutput->instance;
+    my $fh = $fo->output_file;
     print $fh "]";
 
 }
