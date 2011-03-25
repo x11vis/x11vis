@@ -97,6 +97,10 @@ sub _got_setup_request {
 
         # TODO: why + 2? padding until it reaches 4, i guess
         my $comb = ($auth_name_len ) + 2 + ($auth_data_len );
+        if ($auth_data_len == 0 && $auth_name_len == 0) {
+            say "auth null, not reading";
+            return;
+        }
         $handle->push_read(chunk => $comb, sub {
             my ($handle, $auth) = @_;
             say "got auth, sending";
