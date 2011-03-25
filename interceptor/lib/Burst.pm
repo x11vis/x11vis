@@ -62,8 +62,12 @@ sub ensure_in_burst {
 # finishes the burst
 sub finish {
     my ($self) = @_;
+    my $packets = '';
+    if (defined($self->_packets)) {
+        $packets = join(', ', $self->packets);
+    }
     my $fo = FileOutput->instance;
-    $fo->write('{"type":"burst", "elapsed":' . $self->elapsed . ', "packets":[' . join(', ', $self->packets) . ']}');
+    $fo->write('{"type":"burst", "elapsed":' . $self->elapsed . ', "packets":[' . $packets . ']}');
     $self->clear_packets;
     $self->end_of_burst;
 }
