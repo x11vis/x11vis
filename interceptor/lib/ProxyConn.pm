@@ -234,51 +234,37 @@ sub _push_x11_read {
 sub _pkt_to_server {
     my ($self, $handle, $packet) = @_;
 
-    my $packet_handler = $self->packet_handler;
+    my $ph = $self->packet_handler;
 
     # make sure we are in a burst currently (starts a new one when first invoked)
-    $packet_handler->now_in_burst;
+    $ph->child_burst->ensure_in_burst;
 
     $self->x11_handle->push_write($packet);
 
-    $packet_handler->handle_request($packet);
-    $packet_handler->burst_finished() if length($handle->{rbuf}) == 0;
+    $ph->handle_request($packet);
+    $ph->child_burst->finish if length($handle->{rbuf}) == 0;
 }
 
 sub _pkt_from_server {
     my ($self, $x11, $packet) = @_;
 
-    my $packet_handler = $self->packet_handler;
+    $self->client_handle->push_write($packet);
+
+    my $ph = $self->packet_handler;
 
     # make sure we are in a burst currently (starts a new one when first invoked)
-    $packet_handler->now_in_burst;
+    $ph->x11_burst->ensure_in_burst;
 
-    #say "got packet from server to client";
     my ($type) = unpack('c', $packet);
 
-    # TODO: dump all these
-
-    # Error
     if ($type == 0) {
-        #say "X11 error";
-        $self->client_handle->push_write($packet);
-        $self->packet_handler->handle_error($packet);
-        return;
+        $ph->handle_error($packet);
+    } elsif ($type == 1) {
+        $ph->handle_reply($packet);
+    } else {
+        $ph->handle_event($packet);
     }
-
-    # Reply
-    if ($type == 1) {
-        #say "X11 reply";
-        $self->client_handle->push_write($packet);
-        $self->packet_handler->handle_reply($packet);
-        $packet_handler->burst_finished() if length($x11->{rbuf}) == 0;
-        return;
-    }
-
-    # Event
-    #say "X11 Event";
-    $self->client_handle->push_write($packet);
-    $self->packet_handler->handle_event($packet);
+    $ph->x11_burst->finish if length($x11->{rbuf}) == 0;
 }
 
 __PACKAGE__->meta->make_immutable;
