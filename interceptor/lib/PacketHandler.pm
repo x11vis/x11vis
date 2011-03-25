@@ -103,6 +103,9 @@ sub reply_icing {
     say "(reply) icing for $name, data = " . Dumper(\%d);
     my $req_data = $self->type_of_reply($data->{seq});
 
+    # GetInputFocus has no details
+    return '' if $name eq 'GetInputFocus';
+
     if ($name eq 'InternAtom') {
         $self->add_mapping($d{atom}, 'atom_' . $d{atom});
         $self->dump_cleverness({
@@ -189,6 +192,14 @@ sub request_icing {
         # TODO: translate
 
         return "%$window%";
+    }
+
+    if ($name eq 'CreatePixmap') {
+        return "%$d{pid}% on %$d{drawable}% ($d{width} x $d{height})";
+    }
+
+    if ($name eq 'CreateGC') {
+        return "%$d{cid}% on %$d{drawable}%";
     }
 
     undef
