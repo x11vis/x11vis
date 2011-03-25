@@ -16,6 +16,7 @@ use IO::Handle;
 use Time::HiRes qw(gettimeofday tv_interval);
 use lib qw(gen);
 use RequestDissector;
+use ReplyDissector;
 use v5.10;
 
 has 'History' => (
@@ -158,6 +159,51 @@ sub dump_cleverness {
     $self->_current_burst($self->_current_burst . encode_json($data));
 }
 
+sub reply_icing {
+    my ($self, $data) = @_;
+
+    my $name = $data->{name};
+    my %d = %{$data->{moredetails}};
+
+    say "(reply) icing for $name, data = " . Dumper(\%d);
+    my $req_data = $self->type_of_reply($data->{seq});
+
+    if ($name eq 'InternAtom') {
+        $self->add_mapping($d{atom}, 'atom_' . $d{atom});
+        $self->dump_cleverness({
+            id => 'atom_' . $d{atom},
+            title => $req_data->{moredetails}->{name},
+            idtype => 'atom',
+            moredetails => {
+                name => $req_data->{moredetails}->{name}
+            }
+        });
+        return "%atom_" . $d{atom} . "%";
+    }
+
+    if ($name eq 'GetGeometry') {
+        return '%' . $d{root} . '% (' . $d{x} . ', ' . $d{y} . ') ' . $d{width} . ' x ' . $d{height};
+    }
+
+    if ($name eq 'TranslateCoordinates') {
+        return '(' . $d{dst_x} . ', ' . $d{dst_y} . ') on %' . $req_data->{moredetails}->{dst_window} . '%';
+    }
+
+    if ($name eq 'GetProperty') {
+        if ($d{value} == 0) {
+            return 'not set';
+        } else {
+            return $d{value} . ' (type %atom_' . $d{type} . '%)';
+        }
+    }
+
+    if ($name eq 'QueryTree') {
+        return "(" . (scalar @{$d{children}}) . ' children)';
+    }
+
+    undef;
+}
+
 sub request_icing {
     my ($self, $data) = @_;
 
@@ -241,101 +287,18 @@ sub handle_reply {
     my ($self, $reply) = @_;
 
     say "Should dump a reply with length ". length($reply);
-    my ($format, $sequence) = unpack('x[c]cS', $reply);
-    say "reply format = $format for seq $sequence";
-    # TODO: the wrapping of seq ids needs to be handled
-    if (!$self->awaiting_reply($sequence)) {
-        say "didn't expect that coming";
+
+    my $data = ReplyDissector::dissect_reply($reply, $self);
+    if (defined($data) && length($data) > 5) {
+        say "data = " . Dumper($data);
+        ## add the icing to the cake
+        my $details = $self->reply_icing($data);
+        $details = '<strong>NOT YET IMPLEMENTED</strong>' unless defined($details);
+        $data->{details} = $details;
+        $self->dump_reply($data);
         return;
     }
-    my $data = $self->type_of_reply($sequence);
-    my $name = $data->{name};
-    say "name = $name";
-
-    if ($name eq 'InternAtom') {
-        my ($atom) = unpack('x[ccSL]L', $reply);
-
-        say "\n ADDING MAPPING FROM $atom \n";
-        $self->add_mapping($atom, 'atom_' . $atom);
-
-        $self->dump_reply({
-            name => $name,
-            details => "%atom_$atom%",
-            seq => $sequence,
-            moredetails => {
-                atom => $atom
-            }
-        });
-
-        $self->dump_cleverness({
-            id => 'atom_' . $atom,
-            title => $data->{moredetails}->{name},
-            idtype => 'atom',
-            moredetails => {
-                name => $data->{moredetails}->{name}
-            }
-        });
-        return;
-    }
-
-    if ($name eq 'GetProperty') {
-        my ($type, $bytes_after, $value_len) = unpack('x[ccSL]LLL', $reply);
-        say "type = $type, bytes_after = $bytes_after, value_len = $value_len";
-        my $val = substr($reply, 32, $value_len);
-        say "val = $val";
-        $self->dump_reply({
-            name => 'Property',
-            details => "type $type",
-            seq => $sequence,
-            moredetails => {
-                type => $type,
-                data => $val
-            }
-        });
-        return;
-    }
-
-    if ($name eq 'GetGeometry') {
-        my ($root, $x, $y, $width, $height, $border_width) = unpack('x[ccSL]LssSSS', $reply);
-        $self->dump_reply({
-            name => 'Geometry',
-            details => "($x, $y) $width x $height",
-            seq => $sequence,
-            moredetails => {
-                root => $root,
-                x => $x,
-                y => $y,
-                width => $width,
-                height => $height,
-                border_width => $border_width
-            }
-        });
-        return;
-    }
-
-    if ($name eq 'QueryTree') {
-        my ($root, $parent, $children_len) = unpack('x[ccSL]LLS', $reply);
-        say "root = $root, parent = $parent, children_len = $children_len";
-        # TODO: handle the children list
-        return;
-    }
-
-    if ($name eq 'TranslateCoordinates') {
-        my ($same_screen, $child, $dst_x, $dst_y) = unpack('x[c]cx[SL]LSS', $reply);
-        $self->dump_reply({
-            name => $name,
-            details => "($dst_x, $dst_y)",
-            seq => $sequence,
-            moredetails => {
-                same_screen => $same_screen,
-                child => $child,
-                dst_x => $dst_x,
-                dst_y => $dst_y,
-            }
-        });
-        return;
-    }
-
+    return;
 }
 
 sub handle_event {
