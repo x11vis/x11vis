@@ -18,8 +18,11 @@ use Burst;
 use lib qw(gen);
 use RequestDissector;
 use ReplyDissector;
+use EventDissector;
 use FileOutput;
 use v5.10;
+
+my $net_wm_name = undef;
 
 # mapping of X11 IDs to our own IDs
 has 'x_ids' => (
@@ -86,6 +89,14 @@ sub dump_reply {
     $self->x11_burst->add_packet(encode_json($data));
 }
 
+sub dump_event {
+    my ($self, $data) = @_;
+
+    $data->{type} = 'event';
+    $data->{elapsed} = tv_interval($self->start_timestamp());
+    $self->x11_burst->add_packet(encode_json($data));
+}
+
 sub dump_cleverness {
     my ($self, $data) = @_;
 
@@ -107,6 +118,9 @@ sub reply_icing {
     return '' if $name eq 'GetInputFocus';
 
     if ($name eq 'InternAtom') {
+        if ($req_data->{moredetails}->{name} eq 'WM_NAME') {
+            $net_wm_name = $d{atom};
+        }
         $self->add_mapping($d{atom}, 'atom_' . $d{atom});
         $self->dump_cleverness({
             id => 'atom_' . $d{atom},
@@ -120,7 +134,7 @@ sub reply_icing {
     }
 
     if ($name eq 'GetGeometry') {
-        return '%' . $d{root} . '% (' . $d{x} . ', ' . $d{y} . ') ' . $d{width} . ' x ' . $d{height};
+        return '%' . $req_data->{moredetails}->{drawable} . '% (' . $d{x} . ', ' . $d{y} . ') ' . $d{width} . ' x ' . $d{height};
     }
 
     if ($name eq 'TranslateCoordinates') {
@@ -128,11 +142,21 @@ sub reply_icing {
     }
 
     if ($name eq 'GetProperty') {
-        if ($d{value} == 0) {
-            return 'not set';
-        } else {
-            return $d{value} . ' (type %atom_' . $d{type} . '%)';
+        if ($req_data->{moredetails}->{property} == $net_wm_name) {
+            $self->dump_cleverness({
+                id => $req_data->{moredetails}->{window},
+                title => $d{value},
+                idtype => 'window',
+                moredetails => {
+                    name => $d{value},
+                }
+            });
         }
+        #if ($d{value} == 0) {
+        #    return 'not set';
+        #} else {
+            return $d{value} . ' (type %atom_' . $d{type} . '%)';
+        #}
     }
 
     if ($name eq 'QueryTree') {
@@ -205,6 +229,37 @@ sub request_icing {
     undef
 }
 
+sub event_icing {
+    my ($self, $data) = @_;
+
+    my $name = $data->{name};
+    my %d = %{$data->{moredetails}};
+
+    say "(event) icing for $name";
+
+    if ($name eq 'MapNotify') {
+        return "%$d{window}%";
+    }
+
+    if ($name eq 'PropertyNotify') {
+        return "%atom_$d{atom}% on %$d{window}%"
+    }
+
+    if ($name eq 'ConfigureNotify') {
+        return "%$d{window}% ($d{x}, $d{y}) $d{width} x $d{height}";
+    }
+
+    if ($name eq 'Expose') {
+        return "%$d{window}% ($d{x}, $d{y}) $d{width} x $d{height}, $d{count} following";
+    }
+
+    # TODO: enternotify
+    # TODO: NoExposure
+
+    undef
+
+}
+
 sub handle_request {
     my ($self, $request) = @_;
 
@@ -221,7 +276,7 @@ sub handle_request {
         $self->dump_request($data);
         return;
     }
-    say "Unhandled event with opcode $opcode";
+    say "Unhandled request with opcode $opcode";
     $self->inc_sequence;
 }
 
@@ -249,6 +304,24 @@ sub handle_reply {
 
 sub handle_event {
     my ($self, $event) = @_;
+
+    my ($number) = unpack('c', $event);
+
+    say "Should dump an event with length ". length($event);
+
+    my $data = EventDissector::dissect_event($event, $self);
+    if (defined($data) && length($data) > 5) {
+        say "data = " . Dumper($data);
+        ## add the icing to the cake
+        my $details = $self->event_icing($data);
+        $details = '<strong>NOT YET IMPLEMENTED</strong>' unless defined($details);
+        $data->{details} = $details;
+        $self->dump_event($data);
+        return;
+    }
+
+    say "Unhandled event with number $number";
+    return;
 }
 
 sub client_disconnected {
