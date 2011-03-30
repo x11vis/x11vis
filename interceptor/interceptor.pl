@@ -70,6 +70,9 @@ sub endpoint_cmdline {
 #    warn "bound to $thishost, port $thisport\n";
 #};
 
+
+my $conn_id = 0;
+
 # We need to use TCP so that we can do a remote endpoint lookup
 my $tcp_server = tcp_server "127.0.0.1", "6000", sub {
     my ($fh, $host, $port) = @_;
@@ -79,7 +82,7 @@ my $tcp_server = tcp_server "127.0.0.1", "6000", sub {
     my $data = {
         type => 'cleverness',
         elapsed => 0,
-        id => 'fd_' . $fh->fileno,
+        id => 'conn_' . $conn_id,
         title => $cmdline,
         idtype => 'connection',
         moredetails => {
@@ -90,9 +93,12 @@ my $tcp_server = tcp_server "127.0.0.1", "6000", sub {
 
     ProxyConn->new(
         fh => $fh,
+        conn_id => $conn_id,
         host => $host,
         port => $port
     );
+
+    $conn_id++;
 }, sub {
     my ($fh, $thishost, $thisport) = @_;
     warn "(tcp) bound to $thishost, port $thisport\n";

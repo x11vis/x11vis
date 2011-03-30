@@ -24,7 +24,7 @@ use v5.10;
 
 my $net_wm_name = undef;
 
-has 'fileno' => (is => 'ro', isa => 'Int', required => 1);
+has 'conn_id' => (is => 'ro', isa => 'Int', required => 1);
 
 # mapping of X11 IDs to our own IDs
 has 'x_ids' => (
@@ -74,8 +74,8 @@ has [ 'child_burst', 'x11_burst' ] => (
 
 sub BUILD {
     my ($self) = @_;
-    $self->child_burst(Burst->new(fileno => $self->fileno));
-    $self->x11_burst(Burst->new(fileno => $self->fileno));
+    $self->child_burst(Burst->new(conn_id => $self->conn_id));
+    $self->x11_burst(Burst->new(conn_id => $self->conn_id));
 }
 
 sub dump_request {

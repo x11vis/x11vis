@@ -15,6 +15,7 @@ use PacketHandler;
 use v5.10;
 
 has 'fh' => (is => 'ro', isa => 'Ref', required => 1);
+has 'conn_id' => (is => 'ro', isa => 'Int', required => 1);
 has 'client_handle' => (is => 'rw', isa => 'Ref');
 has 'x11_handle' => (is => 'rw', isa => 'Ref', predicate => 'has_x11_handle');
 has 'packet_handler' => (
@@ -26,7 +27,7 @@ sub BUILD {
     my ($self) = @_;
     say "new proxyconn built";
 
-    $self->packet_handler(PacketHandler->new(fileno => $self->fh->fileno));
+    $self->packet_handler(PacketHandler->new(conn_id => $self->conn_id));
 
     my $handle;
     $handle = AnyEvent::Handle->new(

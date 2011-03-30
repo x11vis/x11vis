@@ -20,7 +20,7 @@ has 'start_timestamp' => (
     default => sub { [ gettimeofday ] }
 );
 
-has 'fileno' => (is => 'ro', isa => 'Int', required => 1);
+has 'conn_id' => (is => 'ro', isa => 'Int', required => 1);
 
 has 'elapsed' => (
     is => 'rw',
@@ -69,7 +69,7 @@ sub finish {
         $packets = join(', ', $self->packets);
     }
     my $fo = FileOutput->instance;
-    $fo->write('{"type":"burst", "fd": '. $self->fileno . ', "elapsed":' . $self->elapsed . ', "packets":[' . $packets . ']}');
+    $fo->write('{"type":"burst", "fd": '. $self->conn_id . ', "elapsed":' . $self->elapsed . ', "packets":[' . $packets . ']}');
     $self->clear_packets;
     $self->end_of_burst;
 }
