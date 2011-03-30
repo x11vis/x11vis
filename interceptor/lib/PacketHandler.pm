@@ -187,6 +187,8 @@ sub request_icing {
     # display the ASCII names of atoms and extensions
     return $d{name} if $name eq 'InternAtom';
     return $d{name} if $name eq 'QueryExtension';
+    return "%$d{focus}%" if $name eq 'SetInputFocus';
+    return "%$d{window}%" if $name eq 'MapWindow';
 
     # display translated X11 IDs
     if ($name eq 'GetProperty') {
@@ -336,7 +338,7 @@ sub client_disconnected {
 
     my $fo = FileOutput->instance;
     my $fh = $fo->output_file;
-    print $fh "]";
+    #print $fh "]";
 
 }
 
