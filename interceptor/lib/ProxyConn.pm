@@ -18,16 +18,15 @@ has 'fh' => (is => 'ro', isa => 'Ref', required => 1);
 has 'client_handle' => (is => 'rw', isa => 'Ref');
 has 'x11_handle' => (is => 'rw', isa => 'Ref', predicate => 'has_x11_handle');
 has 'packet_handler' => (
-    is => 'ro',
+    is => 'rw',
     isa => 'PacketHandler',
-    default => sub {
-        PacketHandler->new
-    }
 );
 
 sub BUILD {
     my ($self) = @_;
     say "new proxyconn built";
+
+    $self->packet_handler(PacketHandler->new(fileno => $self->fh->fileno));
 
     my $handle;
     $handle = AnyEvent::Handle->new(

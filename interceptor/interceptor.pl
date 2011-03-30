@@ -15,6 +15,7 @@ use ProxyConn;
 use Web;
 use IO::Handle;
 use IO::All;
+use JSON::XS;
 use v5.10;
 
 #
@@ -75,6 +76,17 @@ my $tcp_server = tcp_server "127.0.0.1", "6000", sub {
 
     my $cmdline = endpoint_cmdline($fh);
     say "cmdline = $cmdline";
+    my $data = {
+        type => 'cleverness',
+        elapsed => 0,
+        id => 'fd_' . $fh->fileno,
+        title => $cmdline,
+        idtype => 'connection',
+        moredetails => {
+            cmdline => $cmdline
+        }
+    };
+    FileOutput->instance->write(encode_json($data));
 
     ProxyConn->new(
         fh => $fh,
