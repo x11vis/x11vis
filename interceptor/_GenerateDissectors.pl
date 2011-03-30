@@ -148,10 +148,48 @@ sub get_field_name {
     }
 }
 
+# XXX: well, this is not using 'expressions' correctly, only caring for value and bit tags
+sub generate_enum_to_str {
+    open my $fh, '>', 'gen/DissectorHelper.pm';
+    say $fh 'package DissectorHelper;';
+    say $fh 'use Moose;';
+    say $fh '';
+    for my $enum ($xml->root->children('enum')) {
+        my $name = $enum->att('name');
+        say $fh "sub enum_${name}_value_to_strings {";
+        say $fh '  my ($value) = @_;';
+        say $fh '  my @retvals;';
+        for my $item ($enum->children('item')) {
+            my $iname = $item->att('name');
+            say "Handling item $iname";
+            for my $child ($item->children) {
+                next if ($child->tag eq '#PCDATA');
+                if ($child->tag eq 'value') {
+                    say $fh '  if ($value == ' . $child->text . ') {';
+                    say $fh "    return '$iname';";
+                    say $fh '  }';
+                } elsif ($child->tag eq 'bit') {
+                    say $fh '  if (($value & (1 << ' . $child->text . '))) {';
+                    say $fh "    push \@retvals, '$iname';";
+                    say $fh '  }';
+                } else {
+                    say "unhandled enum child: " . $child->tag . " in enum $name";
+                    die 1;
+                }
+            }
+        }
+        say $fh '  return @retvals;';
+        say $fh "}";
+    }
+    say $fh '1;';
+    close $fh;
+}
+
 sub generate_requests {
     open my $fh, '>', 'gen/RequestDissector.pm';
     say $fh 'package RequestDissector;';
     say $fh 'use Moose;';
+    say $fh 'use DissectorHelper;';
     say $fh '';
     say $fh 'sub dissect_request {';
     say $fh '  my ($request) = @_;';
@@ -160,7 +198,7 @@ sub generate_requests {
     my @c = $xml->root->children('request');
     for my $req (@c) {
         my $opcode = $req->att('opcode');
-        my @handle = qw(3 4 5 8 9 10 11 16 14 20 40 15 43 55 98 99 17 54 38 53 60 95);
+        my @handle = qw(2 3 4 5 8 9 10 11 16 14 20 40 15 43 55 98 99 17 54 38 53 60 95 18 42 12 62 63 61 7 1);
         next unless $opcode ~~ @handle;
 
         my $reqname = $req->att('name');
@@ -191,6 +229,7 @@ sub generate_requests {
         my $cnt = 4;
 
         my $unpacked = 0;
+        my $merge = 0;
 
         # iterate through the remaining children
         for my $child (@children) {
@@ -207,6 +246,52 @@ sub generate_requests {
                 say $fh "    my \$$listname = substr(\$request, $cnt, $len);";
                 push @names, $listname;
                 #$cnt += $len;
+            } elsif ($child->tag eq 'valueparam') {
+                # TODO: unpack before
+                if (@names > 0) {
+                say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$request);";
+                }
+                $unpacked = 1;
+                say "Handling valueparam at pos $cnt";
+                my $maskname = $child->att('value-mask-name');
+                # unpack the value-mask
+                my ($fmt) = field_size($child->att('value-mask-type'), 'mask');
+                my $len = packfmt_to_bytes($fmt);
+                if (!($maskname ~~ @names)) {
+                say $fh "    my (\$$maskname) = unpack('$fmt', substr(\$request, $cnt, $len));";
+                $cnt += $len;
+                }
+                say $fh "    my \$_cnt = $cnt;";
+                say $fh "    my \%_merge;";
+                $merge = 1;
+                my %mapping = (
+                    ChangeWindowAttributes => 'CW',
+                    CreateWindow => 'CW',
+                    ConfigureWindow => 'ConfigWindow',
+                );
+                if (exists $mapping{$reqname}) {
+                    my ($enum) = $xml->root->get_xpath('enum[@name="' . $mapping{$reqname} . '"]');
+                    for my $item ($enum->children) {
+                        my ($bit) = $item->children('bit');
+                        say $fh "    if ((\$$maskname & (1 << " . $bit->text . "))) {";
+                        say $fh "      # extract bit " . $item->att('name');
+                        say $fh "      my \$ex = unpack('$fmt', substr(\$request, \$_cnt, 4));";
+                        # handle the data itself: either just an int, or an enum, or…
+                        if (($xml->root->get_xpath('enum[@name="' . $item->att('name') . '"]')) > 0) {
+                            say $fh "    # it's an enum";
+                            say $fh "    my \@_data = DissectorHelper::enum_" . $item->att('name') . "_value_to_strings(\$ex);";
+                            say $fh "    \$_merge{" . lc $item->att('name') . "} = [ \@_data ];";
+                        } else {
+                            say $fh "    \$_merge{" . lc $item->att('name') . "} = \$ex;";
+                        }
+
+                        say $fh "      \$_cnt += $len;";
+                        say $fh "    }";
+                    }
+                    say Dumper($enum);
+                }
+                # TODO: extract the existing members
+                # XXX: hmm, why is there no mapping to the corresponding enum?
             } else {
                 my ($fmt, $name) = handle_field($child);
                 $unpackfmt .= $fmt;
@@ -231,6 +316,11 @@ sub generate_requests {
         }
         say $fh qq|      }|;
         say $fh qq|    };|;
+        if ($merge) {
+        say $fh qq|    for (keys \%_merge) {|;
+        say $fh qq|      \$data->{moredetails}->{\$_} = \$_merge{\$_};|;
+        say $fh qq|    }|;
+        }
         say $fh  q|    return $data;|;
         say $fh "    }";
         say $fh '';
@@ -391,7 +481,7 @@ sub generate_events {
     for my $rep (@c) {
         #say Dumper($req);
         my $number = $rep->att('number');
-        my @handle = qw(19 12 28 7 21 22 14);
+        my @handle = qw(19 12 28 7 21 22 14 9 10);
         next unless $number ~~ @handle;
 
         my $reqname = $rep->att('name');
@@ -503,7 +593,10 @@ sub generate_events {
     say $fh '1';
 }
 
+say "--- GENERATING ENUM2STR ---";
+generate_enum_to_str();
 
+say "--- GENERATING REQUESTS ---";
 generate_requests();
 say "";
 say "--- GENERATING REPLIES";
