@@ -18,134 +18,206 @@ $Data::Dumper::Maxdepth = 2;
 my $xml = XML::Twig->new();
 $xml->parsefile('/usr/share/xcb/xproto.xml');
 
-sub packfmt_to_bytes {
-    my ($fmt) = @_;
-
-    my %bytetbl = (
-        c => 1,
-        x => 1,
-        s => 2,
-        S => 2,
-        L => 4,
-        '' => 0,
-    );
-
-    my $result = sum map { $bytetbl{$_} } split(//, $fmt);
-    return $result || 0;
-}
-
 sub field_size {
-    my ($type, $name) = @_;
+    my ($type) = @_;
 
-    my @xids = qw(WINDOW DRAWABLE ATOM PIXMAP CURSOR FONT GCONTEXT COLORMAP FONTABLE);
+    my @xids = qw(WINDOW DRAWABLE ATOM PIXMAP CURSOR FONT GCONTEXT COLORMAP FONTABLE KEYSYM);
     if ($type ~~ @xids || $type eq 'CARD32' || $type eq 'VISUALID' || $type eq 'TIMESTAMP') {
-        return (L => $name);
+        return (L => 4);
+    }
+    if ($type eq 'INT32') {
+        return (l => 4);
     }
     if ($type eq 'INT16') {
-        return (s => $name);
+        return (s => 2);
     }
-    if ($type eq 'BOOL' || $type eq 'CARD8' || $type eq 'char' || $type eq 'void' || $type eq 'BYTE') {
-        return (c => $name);
+    if ($type eq 'INT8') {
+        return (c => 1);
+    }
+    if ($type eq 'BOOL' || $type eq 'CARD8' || $type eq 'char' || $type eq 'void' || $type eq 'BYTE' || $type eq 'KEYCODE' || $type eq 'BUTTON') {
+        return (C => 1);
     }
     if ($type eq 'CARD16') {
-        return (S => $name);
+        return (S => 2);
     }
 
     return (undef, undef);
 }
 
-sub handle_field {
-    my ($el) = @_;
+#
+# spits out code to $fh which handles the element $el.
+# returns the amount of bytes which were handled
+#
+sub dissect_element {
+    my ($fh, $reqname, $prefix, $cnt, $el) = @_;
 
-    if ($el->tag eq 'pad') {
-        my $times = $el->att('bytes');
-        return ('x' x $times => undef);
+    return $el->att('bytes') if $el->tag eq 'pad';
+
+    # XXX: do we need to handle that?
+    return 0 if $el->tag eq 'reply';
+
+    if ($el->tag eq 'field') {
+        my $type = $el->att('type');
+        my $name = lc $el->att('name');
+
+        # check if it is a builtin type
+        my ($fmt, $bytes) = field_size($type);
+        if (defined($fmt)) {
+            say $fh "    $prefix$name} = unpack('$fmt', substr(\$pkt, $cnt, $bytes));";
+            return $bytes;
+        }
+
+        # check if it is a struct
+        say "checking if $type is a struct";
+        my ($struct) = $xml->root->get_xpath('struct[@name = "' . $type . '"]');
+        if (defined($struct)) {
+            my $bytes = $cnt;
+            for my $child ($struct->children) {
+                $bytes += dissect_element($fh, $reqname, $prefix . $name . '}->{', $bytes, $child);
+            }
+            say $fh '';
+            return ($bytes - $cnt);
+        }
+
+        # check if it is a union
+        my ($union) = $xml->root->get_xpath('union[@name = "' . $type . '"]');
+        if (defined($union)) {
+            # TODO: union
+            return 0;
+        }
+        say "uhm, no?";
     }
 
-    if ($el->tag ne 'field') {
-        say "Not a field (instead " . $el->tag . "), skipping";
-        return ('', undef);
+    if ($el->tag eq 'exprfield') {
+        my $type = $el->att('type');
+        my $name = lc $el->att('name');
+
+        # check if it is a builtin type
+        my ($fmt) = field_size($type);
+        if (defined($fmt)) {
+            say $fh "    $prefix$name} = " . expr($el->first_child, $prefix) . ";";
+            return 0;
+        }
+
+        die;
     }
 
-    my $type = $el->att('type');
-    my $name = lc $el->att('name');
-    my ($fmt, $_name) = field_size($type, $name);
-    if (!defined($fmt)) {
-        say "handle_field unhandled field_size of $name";
-        exit 1;
+    # XXX: list is always at the end (should we ensure this in the code?)
+    if ($el->tag eq 'list') {
+        my $type = $el->att('type');
+        my $len = expr($el->first_child(), $prefix);
+        my $listname = $el->att('name');
+        if (!defined($len)) {
+            say "no length given, just using rest of the package";
+            $len = "(\$length - $cnt)";
+        }
+        say "list len is $len";
+        my ($fmt, $bytes) = field_size($type);
+
+        if (defined($fmt) && $bytes == 1) {
+            say $fh "    $prefix$listname} = substr(\$pkt, $cnt, $len);";
+            return 0;
+        }
+
+        # check for builtin types with > 1 byte
+        if (defined($fmt) && $bytes > 1) {
+            say $fh "    {";
+            say $fh "    my \$_listlen = $len;";
+            say $fh "    my \$$listname = substr(\$pkt, $cnt, \$_listlen * $bytes);";
+            say $fh "    my \@c;";
+            say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
+            say $fh "    my \$_part = unpack('$fmt', substr(\$$listname, \$c * $bytes));";
+            say $fh "      push \@c, \$_part;";
+            say $fh "    }";
+            say $fh "    $prefix$listname} = [ \@c ];";
+            say $fh "    }";
+
+            return 0;
+        }
+
+        return 0 if $type eq 'CHAR2B';
+
+        my ($struct) = $xml->root->get_xpath('struct[@name = "' . $type . '"]');
+        if (defined($struct)) {
+
+            my $bytes = 0;
+            for my $child ($struct->children) {
+                $bytes += dissect_element($fh, $reqname, '#', $bytes, $child);
+            }
+            say $fh "    {";
+            say $fh "    my \$_listlen = $len;";
+            say $fh "    my \$$listname = substr(\$pkt, $cnt, \$_listlen * $bytes);";
+            say $fh "    my \@c;";
+            say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
+            say $fh "      my \$_part = {};";
+            my $off = 0;
+            for my $child ($struct->children) {
+                $off += dissect_element($fh, $reqname, '$_part->{', "(\$c * $bytes) + $off", $child);
+            }
+            say $fh "      push \@c, \$_part;";
+            say $fh "    }";
+            say $fh "    $prefix$listname} = [ \@c ];";
+            say $fh "    }";
+            return 0;
+        }
+        die "unknown type $type";
     }
-    return ($fmt => $name);
+
+    if ($el->tag eq 'valueparam') {
+        # TODO: we should save what's in crurent scope
+        my $maskname = $el->att('value-mask-name');
+        # unpack the value-mask
+        my ($fmt, $len) = field_size($el->att('value-mask-type'));
+        say $fh "    my (\$$maskname) = unpack('$fmt', substr(\$pkt, $cnt, $len));";
+        say $fh "    $prefix$maskname} = \$$maskname;";
+        $cnt += $len;
+        say $fh "    my \$_cnt = $cnt;";
+        say $fh "    my \%_merge;";
+        my %mapping = (
+            ChangeWindowAttributes => 'CW',
+            CreateWindow => 'CW',
+            ConfigureWindow => 'ConfigWindow',
+        );
+        if (exists $mapping{$reqname}) {
+            my ($enum) = $xml->root->get_xpath('enum[@name="' . $mapping{$reqname} . '"]');
+            for my $item ($enum->children) {
+                my ($bit) = $item->children('bit');
+                say $fh "    if ((\$$maskname & (1 << " . $bit->text . "))) {";
+                say $fh "      my \$ex = unpack('$fmt', substr(\$pkt, \$_cnt, 4));";
+                # handle the data itself: either just an int, or an enum, or…
+                if (($xml->root->get_xpath('enum[@name="' . $item->att('name') . '"]')) > 0) {
+                    say $fh "      my \@_data = DissectorHelper::enum_" . $item->att('name') . "_value_to_strings(\$ex);";
+                    say $fh "      $prefix" . lc $item->att('name') . "} = [ \@_data ];";
+                } else {
+                    say $fh "      $prefix" . lc $item->att('name') . "} = \$ex;";
+                }
+
+                say $fh "      \$_cnt += $len;";
+                say $fh "    }";
+            }
+        }
+        return $cnt;
+    }
+    die "Unhandled element " . $el->tag . " in req $reqname with name " . $el->att('name');
 }
 
-sub handle_list {
-    my ($el) = @_;
+sub expr {
+    my ($el, $prefix) = @_;
+
+    return unless defined($el);
 
     if ($el->tag eq 'fieldref') {
-        return '$' . $el->text;
+        return $prefix . $el->text . '}';
     }
     if ($el->tag eq 'op') {
         my @children = $el->children;
-        return '(' . handle_list($children[0]) . ' ' . $el->att('op') . ' ' . handle_list($children[1]) . ')';
+        return '(' . expr($children[0], $prefix) . ' ' . $el->att('op') . ' ' . expr($children[1], $prefix) . ')';
     }
     if ($el->tag eq 'value') {
         return $el->text;
     }
-say "--> unhandled tag " . $el->tag . " in handle_list";
+say "--> unhandled tag " . $el->tag . " in expr";
 exit 0;
-}
-
-sub dissect_struct {
-    my ($fh, $type) = @_;
-
-    # see if there is a struct entry in the XML
-    my ($elm) = $xml->root->get_xpath('struct[@name = "' . $type . '"]');
-    if (!defined($elm)) {
-        say "unhandled type as struct $type";
-        exit 1;
-    }
-    my $unpackfmt;
-    my $cnt = 0;
-    say "got a struct, using";
-    my @names;
-    for my $child ($elm->children) {
-        if ($child->tag eq 'list') {
-            say "Handling list at pos $cnt";
-            my $len = handle_list($child->first_child());
-            my $listname = $child->att('name');
-            say "list len is $len";
-            say $fh "    my \$$listname = substr(\$request, \$_cnt, $len);";
-            push @names, "$listname";
-        } else {
-            my ($fmt, $name) = handle_field($child);
-            say "fmt = $fmt, name = $name";
-            $unpackfmt .= $fmt;
-            $cnt += packfmt_to_bytes($fmt);
-            say $fh "    my (\$$name) = unpack('$fmt', substr(\$request, \$_cnt));";
-            say $fh "    \$_cnt++;";
-            push @names, "$name";
-        }
-    }
-    say $fh "    push \@c, { ";
-    for (@names) {
-        say $fh " $_ => \$$_,";
-    }
-    say $fh "    };";
-
-    say "end of struct";
-                    #dissect_single_field($fh, $child->att('type'));
-}
-
-sub get_field_name {
-    my ($el) = @_;
-
-    if ($el->tag eq 'field' || $el->tag eq 'list') {
-        return $el->att('name');
-    } elsif ($el->tag eq 'pad' || $el->tag eq 'reply') {
-        return undef;
-    } else {
-        say "unhandled el with tag " . $el->tag . " for name";
-        exit 1;
-    }
 }
 
 # XXX: well, this is not using 'expressions' correctly, only caring for value and bit tags
@@ -161,7 +233,6 @@ sub generate_enum_to_str {
         say $fh '  my @retvals;';
         for my $item ($enum->children('item')) {
             my $iname = $item->att('name');
-            say "Handling item $iname";
             for my $child ($item->children) {
                 next if ($child->tag eq '#PCDATA');
                 if ($child->tag eq 'value') {
@@ -186,411 +257,183 @@ sub generate_enum_to_str {
 }
 
 sub generate_requests {
+    # write header
     open my $fh, '>', 'gen/RequestDissector.pm';
-    say $fh 'package RequestDissector;';
-    say $fh 'use Moose;';
-    say $fh 'use DissectorHelper;';
-    say $fh '';
-    say $fh 'sub dissect_request {';
-    say $fh '  my ($request) = @_;';
-    say $fh '  my ($opcode) = unpack("c", $request);';
+    say $fh <<'eot';
+package RequestDissector;
+use Moose;
+use DissectorHelper;
 
-    my @c = $xml->root->children('request');
-    for my $req (@c) {
+sub dissect_request {
+  my ($pkt) = @_;
+  my ($opcode, $length) = unpack("cxS", $pkt);
+  my $data = {
+      opcode => $opcode,
+  };
+  my $m = {};
+eot
+
+    for my $req ($xml->root->children('request')) {
         my $opcode = $req->att('opcode');
-        my @handle = qw(2 3 4 5 8 9 10 11 16 14 20 40 15 43 55 98 99 17 54 38 53 60 95 18 42 12 62 63 61 7 1);
-        next unless $opcode ~~ @handle;
-
         my $reqname = $req->att('name');
         say "Handling opcode $opcode ($reqname)";
 
-        say $fh '';
-        say $fh "  # $reqname";
-        say $fh "  if (\$opcode == $opcode) {";
-
-        #my @all_names = grep { defined($_) } map { get_field_name($_) } $req->children;
-        #say $fh "  my (" . join(', ', map { "\$$_" } @all_names) . ");";
-
-        my @names;
-        # skip the first byte (opcode)
-        my $unpackfmt = 'x';
+        say $fh <<"eot";
+  # $reqname
+  if (\$opcode == $opcode) {
+      \$data->{name} = "$reqname";
+eot
 
         my @children = $req->children;
         my $first = shift @children;
 
-        # first field might be padding (→ ignore)
-        my ($fmt, $name) = handle_field($first);
-        push @names, $name if defined($name);
-        $unpackfmt .= $fmt;
+        # dissect the first field, if there is one at all
+        dissect_element($fh, $reqname, '$m->{', 1, $first) if defined($first);
 
         # skip the length-field
-        $unpackfmt .= 'x[S]';
-
         my $cnt = 4;
-
-        my $unpacked = 0;
-        my $merge = 0;
 
         # iterate through the remaining children
         for my $child (@children) {
-            if ($child->tag eq 'list') {
-
-                if (@names > 0) {
-                say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$request);";
-                }
-                $unpacked = 1;
-                say "Handling list at pos $cnt";
-                my $len = handle_list($child->first_child());
-                my $listname = $child->att('name');
-                say "list len is $len";
-                say $fh "    my \$$listname = substr(\$request, $cnt, $len);";
-                push @names, $listname;
-                #$cnt += $len;
-            } elsif ($child->tag eq 'valueparam') {
-                # TODO: unpack before
-                if (@names > 0) {
-                say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$request);";
-                }
-                $unpacked = 1;
-                say "Handling valueparam at pos $cnt";
-                my $maskname = $child->att('value-mask-name');
-                # unpack the value-mask
-                my ($fmt) = field_size($child->att('value-mask-type'), 'mask');
-                my $len = packfmt_to_bytes($fmt);
-                if (!($maskname ~~ @names)) {
-                say $fh "    my (\$$maskname) = unpack('$fmt', substr(\$request, $cnt, $len));";
-                $cnt += $len;
-                }
-                say $fh "    my \$_cnt = $cnt;";
-                say $fh "    my \%_merge;";
-                $merge = 1;
-                my %mapping = (
-                    ChangeWindowAttributes => 'CW',
-                    CreateWindow => 'CW',
-                    ConfigureWindow => 'ConfigWindow',
-                );
-                if (exists $mapping{$reqname}) {
-                    my ($enum) = $xml->root->get_xpath('enum[@name="' . $mapping{$reqname} . '"]');
-                    for my $item ($enum->children) {
-                        my ($bit) = $item->children('bit');
-                        say $fh "    if ((\$$maskname & (1 << " . $bit->text . "))) {";
-                        say $fh "      # extract bit " . $item->att('name');
-                        say $fh "      my \$ex = unpack('$fmt', substr(\$request, \$_cnt, 4));";
-                        # handle the data itself: either just an int, or an enum, or…
-                        if (($xml->root->get_xpath('enum[@name="' . $item->att('name') . '"]')) > 0) {
-                            say $fh "    # it's an enum";
-                            say $fh "    my \@_data = DissectorHelper::enum_" . $item->att('name') . "_value_to_strings(\$ex);";
-                            say $fh "    \$_merge{" . lc $item->att('name') . "} = [ \@_data ];";
-                        } else {
-                            say $fh "    \$_merge{" . lc $item->att('name') . "} = \$ex;";
-                        }
-
-                        say $fh "      \$_cnt += $len;";
-                        say $fh "    }";
-                    }
-                    say Dumper($enum);
-                }
-                # TODO: extract the existing members
-                # XXX: hmm, why is there no mapping to the corresponding enum?
-            } else {
-                my ($fmt, $name) = handle_field($child);
-                $unpackfmt .= $fmt;
-                $cnt += packfmt_to_bytes($fmt);
-                push @names, $name if defined($name);
-            }
+            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
         }
 
-        $unpackfmt =~ s/[x]+$//g;
-        say 'done, fmt = ' . $unpackfmt . ", after handled part = $cnt";
-
-        # generate the code
-        if (!$unpacked && @names > 0) {
-        say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$request);";
-        }
-        say $fh  q|    my $data = {|;
-        say $fh qq|      opcode => $opcode,|;
-        say $fh qq|      name => "$reqname",|;
-        say $fh qq|      moredetails => {|;
-        for my $n (@names) {
-        say $fh qq|        $n => \$$n,|;
-        }
-        say $fh qq|      }|;
-        say $fh qq|    };|;
-        if ($merge) {
-        say $fh qq|    for (keys \%_merge) {|;
-        say $fh qq|      \$data->{moredetails}->{\$_} = \$_merge{\$_};|;
-        say $fh qq|    }|;
-        }
-        say $fh  q|    return $data;|;
-        say $fh "    }";
-        say $fh '';
+        say $fh  <<'eot';
+    $data->{moredetails} = $m;
+    return $data;
+  }
+eot
     }
 
-    say $fh '}';
-    say $fh '';
-    say $fh '__PACKAGE__->meta->make_immutable;';
-    say $fh '';
-    say $fh '1';
+    say $fh <<eot;
+}
+
+__PACKAGE__->meta->make_immutable;
+
+1;
+eot
 }
 
 sub generate_replies {
     open my $fh, '>', 'gen/ReplyDissector.pm';
-    say $fh 'package ReplyDissector;';
-    say $fh 'use Moose;';
-    say $fh 'use v5.10;';
-    say $fh '';
-    say $fh 'sub dissect_reply {';
-    say $fh '  my ($request, $ph) = @_;';
-    say $fh '  my ($type, $format, $sequence, $length) = unpack("ccSL", $request);';
-    say $fh '  # TODO: the wrapping of seq ids needs to be handled';
-    say $fh '  if (!$ph->awaiting_reply($sequence)) {';
-    say $fh '      say "didnt expect that coming";';
-    say $fh '      return;';
-    say $fh '  }';
-    say $fh '  my $data = $ph->type_of_reply($sequence);';
-    say $fh '  my $name = $data->{name};';
+    say $fh <<'eot';
+package ReplyDissector;
+use Moose;
+use v5.10;
 
+sub dissect_reply {
+  my ($pkt, $ph) = @_;
+  my ($type, $format, $sequence, $length) = unpack("ccSL", $pkt);
+  my $m = {};
+  my $data = {
+      seq => $sequence
+  };
+  # TODO: the wrapping of seq ids needs to be handled
+  if (!$ph->awaiting_reply($sequence)) {
+      say "didnt expect that coming";
+      return;
+  }
+  my $_data = $ph->type_of_reply($sequence);
+  my $name = $_data->{name};
+  $data->{name} = $name;
+eot
 
-    my @c = $xml->root->get_xpath('request//reply');
-    for my $rep (@c) {
+    for my $rep ($xml->root->get_xpath('request//reply')) {
         #say Dumper($req);
         my $opcode = $rep->parent->att('opcode');
-        my @handle = qw(3 4 5 8 9 10 11 16 14 20 40 15 43 55 98 99 17 54 38 53 60 95);
-        next unless $opcode ~~ @handle;
 
         my $reqname = $rep->parent->att('name');
         say "Handling opcode $opcode ($reqname)";
 
-        say $fh '';
-        say $fh "  # $reqname";
-        say $fh "  if (\$name eq \"$reqname\") {";
-
-        my @names;
-        # skip the first byte (reply_type)
-        my $unpackfmt = 'x';
+        say $fh <<"eot";
+# $reqname
+if (\$name eq \"$reqname\") {
+eot
 
         my @children = $rep->children;
         my $first = shift @children;
 
         # first field goes into the gap
-        my ($fmt, $name) = handle_field($first);
-        push @names, $name if defined($name);
-        $unpackfmt .= $fmt;
-
-        # skip the length-field
-        $unpackfmt .= 'x[SL]';
+        dissect_element($fh, $reqname, '$m->{', 1, $first) if defined($first);
 
         my $cnt = 8;
 
-        my $unpacked = 0;
-
         # iterate through the children
         for my $child (@children) {
-            if ($child->tag eq 'list') {
-                if (@names > 0) {
-                say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$request);";
-                }
-                $unpacked = 1;
-                say "Handling list at pos $cnt";
-                my $len = handle_list($child->first_child());
-                my $listname = $child->att('name');
-                say "list name = $listname, len is $len, type is " . $child->att('type');
-                my ($listfmt, $__) = field_size($child->att('type'), $listname);
-                my $bytes = (defined($listfmt) ? packfmt_to_bytes($listfmt) : 0);
-                #if (!defined($listfmt)) {
-                #    say "Cannot determine field size for type " . $child->att('type');
-                #    exit 1;
-                #}
-                #my $bytes = packfmt_to_bytes($listfmt);
-
-                say "each type is $bytes";
-                say $fh "    my \$_listlen = $len;";
-                if ($bytes > 1) {
-                    say $fh "    my \$$listname = substr(\$request, $cnt, \$_listlen * $bytes);";
-                    say $fh "    my \@c;";
-                    say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
-                    my ($fmt, $name) = field_size($child->att('type'), $name);
-                    say $fh "    my \$_part = unpack('$fmt', substr(\$children, \$c * $bytes));";
-                    #say $fh "      my \$_part = substr(\$children, \$c * $bytes, $bytes);";
-                    say $fh "      push \@c, \$_part;";
-                    say $fh "    }";
-                    say $fh "    \$children = [ \@c ];";
-                } else {
-                    if ($bytes == 0) {
-                        # step for step dissecting of a struct
-                        say $fh " my \@c;";
-                        say $fh " my \$_cnt = $cnt;";
-                        say $fh " for (my \$i = 0; \$i < \$_listlen; \$i++) {";
-                        say "fh = $fh";
-                        dissect_struct($fh, $child->att('type'));
-                        say $fh " }";
-                        say $fh " my \$$listname = [ \\\@c ];";
-                    } else {
-                        say $fh "    my \$$listname = substr(\$request, $cnt, \$_listlen);";
-                    }
-                }
-                push @names, $listname;
-                #$cnt += $len;
-            } else {
-                my ($fmt, $name) = handle_field($child);
-                $unpackfmt .= $fmt;
-                $cnt += packfmt_to_bytes($fmt);
-                push @names, $name if defined($name);
-            }
+            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
         }
 
-        $unpackfmt =~ s/[x]+$//g;
-        say 'done, fmt = ' . $unpackfmt . ", after handled part = $cnt";
-
-        # generate the code
-        if (!$unpacked && @names > 0) {
-        say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$request);";
-        }
-        say $fh  q|    my $data = {|;
-        say $fh qq|      seq => \$sequence,|;
-        say $fh qq|      name => "$reqname",|;
-        say $fh qq|      moredetails => {|;
-        for my $n (@names) {
-        say $fh qq|        $n => \$$n,|;
-        }
-        say $fh qq|      }|;
-        say $fh qq|    };|;
-        say $fh  q|    return $data;|;
-        say $fh "  }";
-        say $fh '';
+        say $fh  <<'eot';
+    $data->{moredetails} = $m;
+    return $data;
+  }
+eot
     }
 
-    say $fh '}';
-    say $fh '';
-    say $fh '__PACKAGE__->meta->make_immutable;';
-    say $fh '';
-    say $fh '1';
+    say $fh <<'eot';
+}
+
+__PACKAGE__->meta->make_immutable;
+
+1
+eot
 }
 
 sub generate_events {
     open my $fh, '>', 'gen/EventDissector.pm';
-    say $fh 'package EventDissector;';
-    say $fh 'use Moose;';
-    say $fh 'use v5.10;';
-    say $fh '';
-    say $fh 'sub dissect_event {';
-    say $fh '  my ($event, $ph) = @_;';
-    say $fh '  my ($type, $format, $sequence) = unpack("ccS", $event);';
+    say $fh <<'eot';
+package EventDissector;
+use Moose;
+use v5.10;
 
-    my @c = $xml->root->children('event');
-    for my $rep (@c) {
-        #say Dumper($req);
+sub dissect_event {
+  my ($pkt, $ph) = @_;
+  my ($type, $format, $sequence) = unpack("ccS", $pkt);
+  my $m = {};
+eot
+
+    for my $rep ($xml->root->children('event')) {
         my $number = $rep->att('number');
-        my @handle = qw(19 12 28 7 21 22 14 9 10);
-        next unless $number ~~ @handle;
-
         my $reqname = $rep->att('name');
         say "Handling event number $number ($reqname)";
 
-        say $fh '';
-        say $fh "  # $reqname";
-        say $fh "  if (\$type == $number) {";
-
-        my @names;
-        # skip the first byte (reply_type)
-        my $unpackfmt = 'x';
+        say $fh <<"eot";
+  # $reqname
+  if (\$type == $number) {
+    my \$data = {
+      seq => \$sequence,
+      name => "$reqname",
+      moredetails => {}
+    };
+eot
 
         my @children = $rep->children;
         my $first = shift @children;
 
         # first field goes into the gap
-        my ($fmt, $name) = handle_field($first);
-        push @names, $name if defined($name);
-        $unpackfmt .= $fmt;
+        dissect_element($fh, $reqname, '$m->{', 1, $first) if defined($first);
 
-        # skip the length-field
-        $unpackfmt .= 'x[S]';
-
-        my $cnt = 8;
-
-        my $unpacked = 0;
+        my $cnt = 4;
 
         # iterate through the children
         for my $child (@children) {
-            if ($child->tag eq 'list') {
-                if (@names > 0) {
-                say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$request);";
-                }
-                $unpacked = 1;
-                say "Handling list at pos $cnt";
-                my $len = handle_list($child->first_child());
-                my $listname = $child->att('name');
-                say "list name = $listname, len is $len, type is " . $child->att('type');
-                my ($listfmt, $__) = field_size($child->att('type'), $listname);
-                my $bytes = (defined($listfmt) ? packfmt_to_bytes($listfmt) : 0);
-                #if (!defined($listfmt)) {
-                #    say "Cannot determine field size for type " . $child->att('type');
-                #    exit 1;
-                #}
-                #my $bytes = packfmt_to_bytes($listfmt);
-
-                say "each type is $bytes";
-                say $fh "    my \$_listlen = $len;";
-                if ($bytes > 1) {
-                    say $fh "    my \$$listname = substr(\$request, $cnt, \$_listlen * $bytes);";
-                    say $fh "    my \@c;";
-                    say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
-                    my ($fmt, $name) = field_size($child->att('type'), $name);
-                    say $fh "    my \$_part = unpack('$fmt', substr(\$children, \$c * $bytes));";
-                    #say $fh "      my \$_part = substr(\$children, \$c * $bytes, $bytes);";
-                    say $fh "      push \@c, \$_part;";
-                    say $fh "    }";
-                    say $fh "    \$children = [ \@c ];";
-                } else {
-                    if ($bytes == 0) {
-                        # step for step dissecting of a struct
-                        say $fh " my \@c;";
-                        say $fh " my \$_cnt = $cnt;";
-                        say $fh " for (my \$i = 0; \$i < \$_listlen; \$i++) {";
-                        say "fh = $fh";
-                        dissect_struct($fh, $child->att('type'));
-                        say $fh " }";
-                        say $fh " my \$$listname = [ \\\@c ];";
-                    } else {
-                        say $fh "    my \$$listname = substr(\$request, $cnt, \$_listlen);";
-                    }
-                }
-                push @names, $listname;
-                #$cnt += $len;
-            } else {
-                my ($fmt, $name) = handle_field($child);
-                $unpackfmt .= $fmt;
-                $cnt += packfmt_to_bytes($fmt);
-                push @names, $name if defined($name);
-            }
+            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
         }
 
-        $unpackfmt =~ s/[x]+$//g;
-        say 'done, fmt = ' . $unpackfmt . ", after handled part = $cnt";
-
-        # generate the code
-        if (!$unpacked && @names > 0) {
-        say $fh "    my (" . join(', ', map { "\$$_" } @names) . ") = unpack('$unpackfmt', \$event);";
-        }
-        say $fh  q|    my $data = {|;
-        say $fh qq|      seq => \$sequence,|;
-        say $fh qq|      name => "$reqname",|;
-        say $fh qq|      moredetails => {|;
-        for my $n (@names) {
-        say $fh qq|        $n => \$$n,|;
-        }
-        say $fh qq|      }|;
-        say $fh qq|    };|;
-        say $fh  q|    return $data;|;
-        say $fh "  }";
-        say $fh '';
+        say $fh  <<'eot';
+    $data->{moredetails} = $m;
+    return $data;
+  }
+eot
     }
 
-    say $fh '}';
-    say $fh '';
-    say $fh '__PACKAGE__->meta->make_immutable;';
-    say $fh '';
-    say $fh '1';
+    say $fh <<'eot';
+}
+
+__PACKAGE__->meta->make_immutable;
+
+1
+eot
 }
 
 say "--- GENERATING ENUM2STR ---";
