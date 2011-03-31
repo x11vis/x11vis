@@ -22,6 +22,8 @@ use EventDissector;
 use FileOutput;
 use v5.10;
 
+with 'Elapsed';
+
 my $net_wm_name = undef;
 
 has 'conn_id' => (is => 'ro', isa => 'Int', required => 1);
@@ -37,12 +39,6 @@ has 'x_ids' => (
         id_for_xid => 'get',
         xid_known => 'exists'
     }
-);
-
-has 'start_timestamp' => (
-    is => 'rw',
-    isa => 'ArrayRef',
-    default => sub { [ gettimeofday ] },
 );
 
 has 'sequence' => (
@@ -82,7 +78,7 @@ sub dump_request {
     my ($self, $data) = @_;
     $data->{type} = 'request';
     $data->{seq} = $self->sequence;
-    $data->{elapsed} = tv_interval($self->start_timestamp());
+    $data->{elapsed} = $self->elapsed;
     $self->child_burst->add_packet(encode_json($data));
     $self->expect_reply($self->sequence, $data);
     $self->inc_sequence;
@@ -92,7 +88,7 @@ sub dump_reply {
     my ($self, $data) = @_;
 
     $data->{type} = 'reply';
-    $data->{elapsed} = tv_interval($self->start_timestamp());
+    $data->{elapsed} = $self->elapsed;
     $self->x11_burst->add_packet(encode_json($data));
 }
 
@@ -100,7 +96,7 @@ sub dump_event {
     my ($self, $data) = @_;
 
     $data->{type} = 'event';
-    $data->{elapsed} = tv_interval($self->start_timestamp());
+    $data->{elapsed} = $self->elapsed;
     $self->x11_burst->add_packet(encode_json($data));
 }
 
@@ -108,7 +104,7 @@ sub dump_cleverness {
     my ($self, $data) = @_;
 
     $data->{type} = 'cleverness';
-    $data->{elapsed} = tv_interval($self->start_timestamp());
+    $data->{elapsed} = $self->elapsed;
     FileOutput->instance->write(encode_json($data));
 }
 
