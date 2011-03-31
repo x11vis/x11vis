@@ -12,6 +12,7 @@ use AnyEvent;
 use Twiggy::Server;
 use lib qw(lib);
 use ProxyConn;
+use IPCConn;
 use Web;
 use IO::Handle;
 use IO::All;
@@ -102,6 +103,19 @@ my $tcp_server = tcp_server "127.0.0.1", "6000", sub {
 }, sub {
     my ($fh, $thishost, $thisport) = @_;
     warn "(tcp) bound to $thishost, port $thisport\n";
+};
+
+# TODO: configurable path
+my $ipc_server = tcp_server "unix/", "/tmp/x11vis.sock", sub {
+    my ($fh, $host, $port) = @_;
+
+    say "new ipc client";
+    IPCConn->new(
+        fh => $fh
+    );
+}, sub {
+    my ($fh, $thishost, $thisport) = @_;
+    warn "(unix-ipc) bound to $thishost, port $thisport\n";
 };
 
 # setup the web interface
