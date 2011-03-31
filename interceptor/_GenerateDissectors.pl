@@ -436,6 +436,86 @@ __PACKAGE__->meta->make_immutable;
 eot
 }
 
+sub generate_errors {
+    open my $fh, '>', 'gen/ErrorDissector.pm';
+    say $fh <<'eot';
+package ErrorDissector;
+use Moose;
+use v5.10;
+
+sub dissect_error {
+  my ($pkt, $ph) = @_;
+  my ($type, $error_code, $sequence) = unpack("ccS", $pkt);
+  my $m = {};
+eot
+
+    for my $rep ($xml->root->children('error')) {
+        my $number = $rep->att('number');
+        my $reqname = $rep->att('name');
+        say "Handling error number $number ($reqname)";
+
+        say $fh <<"eot";
+  # $reqname
+  if (\$error_code == $number) {
+    my \$data = {
+      seq => \$sequence,
+      name => "$reqname",
+      moredetails => {}
+    };
+eot
+
+        my $cnt = 4;
+        # iterate through the children
+        for my $child ($rep->children) {
+            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+        }
+
+        say $fh  <<'eot';
+    $data->{moredetails} = $m;
+    return $data;
+  }
+eot
+    }
+    for my $rep ($xml->root->children('errorcopy')) {
+        my $number = $rep->att('number');
+        my $reqname = $rep->att('name');
+        say "Handling error number $number ($reqname)";
+        my $ref = $rep->att('ref');
+        ($rep) = $xml->root->get_xpath('error[@name="' . $ref . '"]');
+
+        say $fh <<"eot";
+  # $reqname
+  if (\$error_code == $number) {
+    my \$data = {
+      seq => \$sequence,
+      name => "$reqname",
+      moredetails => {}
+    };
+eot
+
+        my $cnt = 4;
+        # iterate through the children
+        for my $child ($rep->children) {
+            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+        }
+
+        say $fh  <<'eot';
+    $data->{moredetails} = $m;
+    return $data;
+  }
+eot
+    }
+
+
+    say $fh <<'eot';
+}
+
+__PACKAGE__->meta->make_immutable;
+
+1
+eot
+}
+
 say "--- GENERATING ENUM2STR ---";
 generate_enum_to_str();
 
@@ -449,3 +529,7 @@ say "";
 say "--- GENERATING EVENTS";
 say "";
 generate_events();
+say '';
+say '--- GENERATING ERRORS';
+say '';
+generate_errors();

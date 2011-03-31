@@ -19,6 +19,7 @@ use lib qw(gen);
 use RequestDissector;
 use ReplyDissector;
 use EventDissector;
+use ErrorDissector;
 use FileOutput;
 use v5.10;
 
@@ -96,6 +97,14 @@ sub dump_event {
     my ($self, $data) = @_;
 
     $data->{type} = 'event';
+    $data->{elapsed} = $self->elapsed;
+    $self->x11_burst->add_packet(encode_json($data));
+}
+
+sub dump_error {
+    my ($self, $data) = @_;
+
+    $data->{type} = 'error';
     $data->{elapsed} = $self->elapsed;
     $self->x11_burst->add_packet(encode_json($data));
 }
@@ -287,6 +296,20 @@ sub handle_request {
 
 sub handle_error {
     my ($self, $error) = @_;
+
+    say "handling error";
+
+    my $data = ErrorDissector::dissect_error($error, $self);
+    if (defined($data) && length($data) > 5) {
+        # add the icing to the cake
+        #my $details = $self->error_icing($data);
+        my $details = undef;
+        $details = '<strong>NOT YET IMPLEMENTED</strong>' unless defined($details);
+        $data->{details} = $details;
+        $self->dump_error($data);
+        return;
+    }
+    say "Unhandled error";
 }
 
 sub handle_reply {
