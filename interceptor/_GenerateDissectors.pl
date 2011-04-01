@@ -274,6 +274,7 @@ use DissectorHelper;
 sub dissect_request {
   my ($pkt) = @_;
   my ($opcode, $length) = unpack("cxS", $pkt);
+  $length *= 4;
   my $data = {
       opcode => $opcode,
   };
@@ -331,6 +332,7 @@ use v5.10;
 sub dissect_reply {
   my ($pkt, $ph) = @_;
   my ($type, $format, $sequence, $length) = unpack("ccSL", $pkt);
+  $length *= 4;
   my $m = {};
   my $data = {
       seq => $sequence
