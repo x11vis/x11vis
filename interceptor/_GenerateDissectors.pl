@@ -68,8 +68,10 @@ sub dissect_element {
                 say $fh "      $prefix$name} = DissectorHelper::enum_" . $el->att('enum') . "_value_to_strings($prefix$name});";
             }
             if (defined($el->att('altenum'))) {
-                say $fh "      my \$_val = DissectorHelper::enum_" . $el->att('altenum') . "_value_to_strings($prefix$name});";
-                say $fh "      $prefix$name} = \$_val if defined(\$_val);";
+                say $fh "      {";
+                say $fh "        my \$_val = DissectorHelper::enum_" . $el->att('altenum') . "_value_to_strings($prefix$name});";
+                say $fh "        $prefix$name} = \$_val if defined(\$_val);";
+                say $fh "      }";
             }
             return $bytes;
         }
