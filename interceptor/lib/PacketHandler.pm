@@ -125,9 +125,9 @@ sub reply_icing {
 
     say "(reply) icing for $name, data = " . Dumper(\%d);
     my $req_data = $self->type_of_reply($data->{seq});
+    my %rd = %{$req_data->{moredetails}};
 
-    # GetInputFocus has no details
-    return '' if $name eq 'GetInputFocus';
+    return "%$d{focus}%" if $name eq 'GetInputFocus';
 
     if ($name eq 'InternAtom') {
         if ($req_data->{moredetails}->{name} eq 'WM_NAME') {
@@ -145,12 +145,17 @@ sub reply_icing {
         return "%atom_" . $d{atom} . "%";
     }
 
+    if ($name eq 'GetAtomName') {
+        # TODO: update mapping
+        return "$d{$name}";
+    }
+
     if ($name eq 'GetGeometry') {
-        return '%' . $req_data->{moredetails}->{drawable} . '% (' . $d{x} . ', ' . $d{y} . ') ' . $d{width} . ' x ' . $d{height};
+        return "%$rd{drawable}% ($d{x}, $d{y}) $d{width} x $d{height}";
     }
 
     if ($name eq 'TranslateCoordinates') {
-        return '(' . $d{dst_x} . ', ' . $d{dst_y} . ') on %' . $req_data->{moredetails}->{dst_window} . '%';
+        return "($d{dst_x}, $d{dst_y}) on %$rd{dst_window}%";
     }
 
     if ($name eq 'GetProperty') {
@@ -175,6 +180,10 @@ sub reply_icing {
         return "(" . (scalar @{$d{children}}) . ' children)';
     }
 
+    if ($name eq 'QueryExtension') {
+        return "$rd{name} " . ($d{present} ? 'present' : 'not present');
+    }
+
     undef;
 }
 
@@ -184,16 +193,84 @@ sub request_icing {
     my $name = $data->{name};
     my %d = %{$data->{moredetails}};
 
-    say "icing for $name";
+    say "icing for $name, data = " . Dumper($data);
 
-    # GetInputFocus has no details
+    # these requests have no details
     return '' if $name eq 'GetInputFocus';
+    return '' if $name eq 'GetModifierMapping';
 
     # display the ASCII names of atoms and extensions
     return $d{name} if $name eq 'InternAtom';
+    return "%atom_$d{atom}%" if $name eq 'GetAtomName';
     return $d{name} if $name eq 'QueryExtension';
     return "%$d{focus}%" if $name eq 'SetInputFocus';
-    return "%$d{window}%" if $name eq 'MapWindow';
+
+    my @single_window = qw(MapWindow DestroyWindow DestroySubwindows UnmapWindow);
+    return "%$d{window}%" if $name ~~ @single_window;
+
+    if ($name eq 'GrabKey') {
+        # TODO: modifier human readable
+        return "$d{key} on %$d{grab_window}%";
+    }
+
+    if ($name eq 'GrabButton') {
+        return "button $d{button} on %$d{grab_window}%";
+    }
+
+    if ($name eq 'CopyArea') {
+        return "$d{width} x $d{height} from %$d{src_drawable}% ($d{src_x}, $d{src_y}) to %$d{dst_drawable}% ($d{dst_x}, $d{dst_y})";
+    }
+
+    if ($name eq 'PolyFillRectangle') {
+        return (scalar @{$d{rectangles}}) . " rects on %$d{drawable}%";
+    }
+
+    if ($name eq 'PolyLine') {
+        return (scalar @{$d{points}}) . " points on %$d{drawable}%";
+    }
+
+    if ($name eq 'PolySegment') {
+        return (scalar @{$d{segments}}) . " segments on %$d{drawable}%";
+    }
+
+    if ($name eq 'FillPoly') {
+        return (scalar @{$d{points}}) . " points on %$d{drawable}%";
+    }
+
+    if ($name eq 'CreateWindow') {
+        # TODO: save id
+        return "%$d{wid}% (parent %$d{parent}%) ($d{x}, $d{y}) $d{width} x $d{height}";
+    }
+
+    if ($name eq 'GetWindowAttributes') {
+        return "%$d{window}%";
+    }
+
+    if ($name eq 'ReparentWindow') {
+        return "%$d{window}% into %$d{parent}% at ($d{x}, $d{y})";
+    }
+
+    if ($name eq 'ChangeSaveSet') {
+        return "$d{mode} %$d{window}%";
+    }
+
+    if ($name eq 'GetKeyboardMapping') {
+        return "$d{count} codes starting from $d{first_keycode}"
+    }
+
+    if ($name eq 'OpenFont') {
+        # TODO: save id $d{fid}
+        return "$d{name}";
+    }
+
+    if ($name eq 'ListFontsWithInfo' ||
+        $name eq 'ListFonts') {
+        return "$d{pattern}";
+    }
+
+    if ($name eq 'QueryFont') {
+        return "%$d{font}%";
+    }
 
     # display translated X11 IDs
     if ($name eq 'GetProperty') {
@@ -240,6 +317,80 @@ sub request_icing {
         return "%$d{cid}% on %$d{drawable}%";
     }
 
+    if ($name eq 'ChangeWindowAttributes') {
+        my $window = $d{window};
+        delete $d{window};
+        say "left:" . Dumper(\%d);
+        my $details = "%$window%";
+        if ((keys %d) == 1) {
+            my $key = (keys %d)[0];
+            if (ref($d{$key}) eq 'ARRAY') {
+                $details .= " $key=" . join(', ', @{$d{$key}});
+            } else {
+                $details .= " $key=$d{$key}";
+            }
+        }
+        return $details;
+    }
+
+    if ($name eq 'ConfigureWindow') {
+        my $details = "%$d{window}%";
+        if (exists $d{x} && exists $d{y}) {
+            $details .= " ($d{x}, $d{y})";
+        }
+        # TODO: single of x, y, w, h
+        if (exists $d{width} && exists $d{height}) {
+            $details .= " $d{width} x $d{height}";
+        }
+        return $details;
+    }
+
+    if ($name eq 'ChangeProperty') {
+        # TODO
+        return "%atom_$d{property}% on %$d{window}%";
+
+#        mode => $mode,
+#        window => $window,
+#        property => $property,
+#        type => $type,
+#        format => $format,
+#        data_len => $data_len,
+#        data => $data,
+
+    }
+
+    if ($name eq 'FreePixmap') {
+        # TODO: id cleanup
+        return "%$d{pixmap}%";
+    }
+
+    if ($name eq 'FreeGC') {
+        # TODO: id cleanup
+        return "%$d{gc}%";
+    }
+
+    if ($name eq 'CloseFont') {
+        # TODO: id cleanup
+        return "%$d{font}%";
+    }
+
+    if ($name eq 'ImageText8') {
+        # TODO: ellipsize
+        return "%$d{drawable}% at $d{x}, $d{y}: $d{string}";
+    }
+
+    if ($name eq 'ClearArea') {
+        return "%$d{window}% ($d{x}, $d{y}) $d{width} x $d{height}";
+    }
+
+    if ($name eq 'UngrabKey') {
+        # TODO: modifier
+        return "$d{key} on %$d{grab_window}%";
+    }
+
+
+    # TODO: UnmapWindow
+
     undef
 }
 
@@ -255,6 +406,10 @@ sub event_icing {
         return "%$d{window}%";
     }
 
+    if ($name eq 'MapRequest') {
+        return "%$d{window}% (parent %$d{parent}%)";
+    }
+
     if ($name eq 'PropertyNotify') {
         return "%atom_$d{atom}% on %$d{window}%"
     }
@@ -267,11 +422,39 @@ sub event_icing {
         return "%$d{window}% ($d{x}, $d{y}) $d{width} x $d{height}, $d{count} following";
     }
 
-    # TODO: enternotify
-    # TODO: NoExposure
+    if ($name eq 'FocusIn') {
+        return "%$d{event}% (mode = $d{mode}, detail = $d{detail})";
+    }
+
+    if ($name eq 'ReparentNotify') {
+        return "%$d{window}% now in %$d{parent}% at ($d{x}, $d{y})";
+    }
+
+    if ($name eq 'NoExposure') {
+        return "%$d{drawable}%";
+    }
+
+    if ($name eq 'VisibilityNotify') {
+        return "%$d{window}% $d{state}";
+    }
+
+    if ($name eq 'MappingNotify') {
+        return "$d{request}";
+    }
+
+    if ($name eq 'EnterNotify') {
+        return "%$d{event}% at ($d{event_x}, $d{event_y})";
+    }
+
+    if ($name eq 'KeyPress') {
+        return "key $d{detail} on %$d{event}%";
+    }
+
+    if ($name eq 'UnmapNotify') {
+        return "%$d{window}%";
+    }
 
     undef
-
 }
 
 sub handle_request {

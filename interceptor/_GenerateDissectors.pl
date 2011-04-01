@@ -114,7 +114,9 @@ sub dissect_element {
         my $type = $el->att('type');
         my $len = expr($el->first_child(), $prefix);
         my $listname = $el->att('name');
+        my $fixlen = 0;
         if (!defined($len)) {
+            $fixlen = 1;
             say "no length given, just using rest of the package";
             $len = "(\$length - $cnt)";
         }
@@ -151,15 +153,18 @@ sub dissect_element {
             for my $child ($struct->children) {
                 $bytes += dissect_element($fh, $reqname, '#', $bytes, $child);
             }
+            if ($fixlen) {
+                $len .= ' / ' . $bytes;
+            }
+
             say $fh "    {";
             say $fh "    my \$_listlen = $len;";
-            say $fh "    my \$$listname = substr(\$pkt, $cnt, \$_listlen * $bytes);";
             say $fh "    my \@c;";
             say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
             say $fh "      my \$_part = {};";
             my $off = 0;
             for my $child ($struct->children) {
-                $off += dissect_element($fh, $reqname, '$_part->{', "(\$c * $bytes) + $off", $child);
+                $off += dissect_element($fh, $reqname, '$_part->{', "$cnt + (\$c * $bytes) + $off", $child);
             }
             say $fh "      push \@c, \$_part;";
             say $fh "    }";
@@ -184,6 +189,7 @@ sub dissect_element {
             ChangeWindowAttributes => 'CW',
             CreateWindow => 'CW',
             ConfigureWindow => 'ConfigWindow',
+            ChangeGC => 'GC',
         );
         if (exists $mapping{$reqname}) {
             my ($enum) = $xml->root->get_xpath('enum[@name="' . $mapping{$reqname} . '"]');
@@ -238,6 +244,7 @@ sub generate_enum_to_str {
         say $fh "sub enum_${name}_value_to_strings {";
         say $fh '  my ($value) = @_;';
         say $fh '  my @retvals;';
+        my $is_bitmask = 0;
         for my $item ($enum->children('item')) {
             my $iname = $item->att('name');
             for my $child ($item->children) {
@@ -250,13 +257,18 @@ sub generate_enum_to_str {
                     say $fh '  if (($value & (1 << ' . $child->text . '))) {';
                     say $fh "    push \@retvals, '$iname';";
                     say $fh '  }';
+                    $is_bitmask = 1;
                 } else {
                     say "unhandled enum child: " . $child->tag . " in enum $name";
                     die 1;
                 }
             }
         }
-        say $fh '  return @retvals;';
+        if ($is_bitmask) {
+            say $fh '  return @retvals;';
+        } else {
+            say $fh '  return undef;';
+        }
         say $fh "}";
     }
     say $fh '1;';
