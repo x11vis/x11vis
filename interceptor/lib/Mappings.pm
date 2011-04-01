@@ -28,11 +28,45 @@ has 'mappings' => (
     traits => [ 'Hash' ],
     is => 'rw',
     isa => 'HashRef',
-    default => sub { {} }
+    default => sub { {} },
+    handles => {
+        mapping_for => 'get',
+        add_mapping => 'set',
+        delete_mapping => 'delete',
+    }
 );
 
-sub add_mapping {
+my %prefixes = (
+    window => 'w',
+    atom => 'a',
+    pixmap => 'p',
+    font => 'f',
+    gcontext => 'g',
+);
 
+my %counters = ();
+
+sub id_for {
+    my ($self, $x_id, $class) = @_;
+
+    my $mapping = $self->mapping_for($x_id);
+    return $mapping->{id} if defined($mapping);
+
+    if (!defined($class)) {
+        warn "class not given but ID unknown!";
+    }
+
+    # We need to create a new mapping
+    my $id = $counters{$class};
+    $id ||= 0;
+    $counters{$class} = $id + 1;
+    $id = $prefixes{$class} . '_' . $id;
+    $self->add_mapping($x_id => {
+        id => $id,
+        class => $class
+    });
+
+    return $id;
 }
 
 __PACKAGE__->meta->make_immutable;

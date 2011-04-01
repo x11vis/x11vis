@@ -119,6 +119,11 @@ sub dump_cleverness {
     FileOutput->instance->write(encode_json($data));
 }
 
+# shortcut which retuns a formatted ID (within % signs)
+sub id {
+    return '%' . $mappings->id_for(@_) . '%';
+}
+
 sub reply_icing {
     my ($self, $data) = @_;
 
@@ -129,20 +134,20 @@ sub reply_icing {
     my $req_data = $self->type_of_reply($data->{seq});
     my %rd = %{$req_data->{moredetails}};
 
-    return "%$d{focus}%" if $name eq 'GetInputFocus';
+    return id($d{focus} => 'window') if $name eq 'GetInputFocus';
 
     if ($name eq 'InternAtom') {
         $mappings->add_atom($rd{name} => $d{atom});
-        $self->add_mapping($d{atom}, 'atom_' . $d{atom});
+        my $id = $mappings->id_for($d{atom}, 'atom');
         $self->dump_cleverness({
-            id => 'atom_' . $d{atom},
-            title => $req_data->{moredetails}->{name},
+            id => $id,
+            title => $rd{name},
             idtype => 'atom',
             moredetails => {
-                name => $req_data->{moredetails}->{name}
+                name => $rd{name},
             }
         });
-        return "%atom_" . $d{atom} . "%";
+        return id($d{atom} => 'atom');
     }
 
     if ($name eq 'GetAtomName') {
@@ -151,18 +156,18 @@ sub reply_icing {
     }
 
     if ($name eq 'GetGeometry') {
-        return "%$rd{drawable}% ($d{x}, $d{y}) $d{width} x $d{height}";
+        return id($rd{drawable}) . " ($d{x}, $d{y}) $d{width} x $d{height}";
     }
 
     if ($name eq 'TranslateCoordinates') {
-        return "($d{dst_x}, $d{dst_y}) on %$rd{dst_window}%";
+        return "($d{dst_x}, $d{dst_y}) on " . id($rd{dst_window});
     }
 
     if ($name eq 'GetProperty') {
         my $atom = $mappings->get_atom_xid('WM_NAME');
         if (defined($atom) && $atom == $rd{property}) {
             $self->dump_cleverness({
-                id => $req_data->{moredetails}->{window},
+                id => $mappings->id_for($rd{window}, 'window'),
                 title => $d{value},
                 idtype => 'window',
                 moredetails => {
@@ -173,7 +178,7 @@ sub reply_icing {
         #if ($d{value} == 0) {
         #    return 'not set';
         #} else {
-            return $d{value} . ' (type %atom_' . $d{type} . '%)';
+            return $d{value} . ' (type ' . id($d{type} => 'atom') . ')';
         #}
     }
 
@@ -202,57 +207,64 @@ sub request_icing {
 
     # display the ASCII names of atoms and extensions
     return $d{name} if $name eq 'InternAtom';
-    return "%atom_$d{atom}%" if $name eq 'GetAtomName';
+    return id($d{atom} => 'atom') if $name eq 'GetAtomName';
     return $d{name} if $name eq 'QueryExtension';
-    return "%$d{focus}%" if $name eq 'SetInputFocus';
+    return id($d{focus} => 'window') if $name eq 'SetInputFocus';
 
-    my @single_window = qw(MapWindow DestroyWindow DestroySubwindows UnmapWindow);
-    return "%$d{window}%" if $name ~~ @single_window;
+    my @single_window = qw(MapWindow DestroySubwindows UnmapWindow);
+    return id($d{window} => 'window') if $name ~~ @single_window;
+
+    if ($name eq 'DestroyWindow') {
+        my $win = $mappings->id_for($d{window}, 'window');
+        $mappings->delete_mapping($d{window});
+        return "%$win%";
+    }
 
     if ($name eq 'GrabKey') {
         # TODO: modifier human readable
-        return "$d{key} on %$d{grab_window}%";
+        return "$d{key} on " . id($d{grab_window} => 'window');
     }
 
     if ($name eq 'GrabButton') {
-        return "button $d{button} on %$d{grab_window}%";
+        return "button $d{button} on " . id($d{grab_window}, 'window');
     }
 
     if ($name eq 'CopyArea') {
-        return "$d{width} x $d{height} from %$d{src_drawable}% ($d{src_x}, $d{src_y}) to %$d{dst_drawable}% ($d{dst_x}, $d{dst_y})";
+        return "$d{width} x $d{height} from " . id($d{src_drawable}) .
+               " ($d{src_x}, $d{src_y}) to " . id($d{dst_drawable}) .
+               " ($d{dst_x}, $d{dst_y})";
     }
 
     if ($name eq 'PolyFillRectangle') {
-        return (scalar @{$d{rectangles}}) . " rects on %$d{drawable}%";
+        return (scalar @{$d{rectangles}}) . " rects on " . id($d{drawable});
     }
 
     if ($name eq 'PolyLine') {
-        return (scalar @{$d{points}}) . " points on %$d{drawable}%";
+        return (scalar @{$d{points}}) . " points on " . id($d{drawable});
     }
 
     if ($name eq 'PolySegment') {
-        return (scalar @{$d{segments}}) . " segments on %$d{drawable}%";
+        return (scalar @{$d{segments}}) . " segments on " . id($d{drawable});
     }
 
     if ($name eq 'FillPoly') {
-        return (scalar @{$d{points}}) . " points on %$d{drawable}%";
+        return (scalar @{$d{points}}) . " points on " . id($d{drawable});
     }
 
     if ($name eq 'CreateWindow') {
-        # TODO: save id
-        return "%$d{wid}% (parent %$d{parent}%) ($d{x}, $d{y}) $d{width} x $d{height}";
+        return id($d{wid} => 'window') . ' (parent ' . id($d{parent} => 'window') . ") ($d{x}, $d{y}) $d{width} x $d{height}";
     }
 
     if ($name eq 'GetWindowAttributes') {
-        return "%$d{window}%";
+        return id($d{window} => 'window');
     }
 
     if ($name eq 'ReparentWindow') {
-        return "%$d{window}% into %$d{parent}% at ($d{x}, $d{y})";
+        return id($d{window} => 'window') . ' into ' . id($d{parent} => 'window') . " at ($d{x}, $d{y})";
     }
 
     if ($name eq 'ChangeSaveSet') {
-        return "$d{mode} %$d{window}%";
+        return "$d{mode} " . id($d{window} => 'window');
     }
 
     if ($name eq 'GetKeyboardMapping') {
@@ -260,7 +272,7 @@ sub request_icing {
     }
 
     if ($name eq 'OpenFont') {
-        # TODO: save id $d{fid}
+        $mappings->id_for($d{fid} => 'font');
         return "$d{name}";
     }
 
@@ -270,59 +282,48 @@ sub request_icing {
     }
 
     if ($name eq 'QueryFont') {
-        return "%$d{font}%";
+        return id($d{font} => 'font');
     }
 
     # display translated X11 IDs
     if ($name eq 'GetProperty') {
-        my $property = $d{property};
-        my $window = $d{window};
-        if ($self->xid_known($property)) {
-            $property = $self->id_for_xid($property);
-        }
+        my $property = id($d{property} => 'atom');
+        my $window = id($d{window} => 'window');
         $data->{_references} = [ $property, $window ];
-        return "%$property% of %$window%";
+        return "$property of $window";
     }
 
     if ($name eq 'GetGeometry') {
-        my $drawable = $d{drawable};
-        if ($self->xid_known($drawable)) {
-            $drawable = $self->id_for_xid($drawable);
-        }
-        return "%$drawable%";
+        return id($d{drawable});
     }
 
     if ($name eq 'TranslateCoordinates') {
-        my $src = $d{src_window};
-        my $dst = $d{dst_window};
+        my $src = id($d{src_window});
+        my $dst = id($d{dst_window});
         my $src_x = $d{src_x};
         my $src_y = $d{src_y};
-        # TODO: translate
 
         # TODO: better description?
-        return "($src_x, $src_y) from %$src% to %$dst%";
+        return "($src_x, $src_y) from $src to $dst";
     }
 
     if ($name eq 'QueryTree') {
-        my $window = $d{window};
-        # TODO: translate
-
-        return "%$window%";
+        return id($d{window} => 'window');
     }
 
     if ($name eq 'CreatePixmap') {
-        return "%$d{pid}% on %$d{drawable}% ($d{width} x $d{height})";
+        return id($d{pid} => 'pixmap') . ' on ' . id($d{drawable}) . " ($d{width} x $d{height})";
     }
 
     if ($name eq 'CreateGC') {
-        return "%$d{cid}% on %$d{drawable}%";
+        return id($d{cid} => 'gcontext') . ' on ' . id($d{drawable});
     }
 
     if ($name eq 'ChangeWindowAttributes') {
-        my $window = $d{window};
+        my $details = id($d{window} => 'window');
         delete $d{window};
+        delete $d{value_mask};
         say "left:" . Dumper(\%d);
-        my $details = "%$window%";
         if ((keys %d) == 1) {
             my $key = (keys %d)[0];
             if (ref($d{$key}) eq 'ARRAY') {
@@ -335,7 +336,7 @@ sub request_icing {
     }
 
     if ($name eq 'ConfigureWindow') {
-        my $details = "%$d{window}%";
+        my $details = id($d{window} => 'window');
         if (exists $d{x} && exists $d{y}) {
             $details .= " ($d{x}, $d{y})";
         }
@@ -347,10 +348,11 @@ sub request_icing {
     }
 
     if ($name eq 'ChangeProperty') {
+        my $win = $mappings->id_for($d{window}, 'window');
         my $atom = $mappings->get_atom_xid('WM_NAME');
         if (defined($atom) && $atom == $d{property}) {
             $self->dump_cleverness({
-                id => $d{window},
+                id => $win,
                 title => $d{data},
                 idtype => 'window',
                 moredetails => {
@@ -358,50 +360,40 @@ sub request_icing {
                 }
             });
         }
-        # TODO
-        return "%atom_$d{property}% on %$d{window}%";
-
-#        mode => $mode,
-#        window => $window,
-#        property => $property,
-#        type => $type,
-#        format => $format,
-#        data_len => $data_len,
-#        data => $data,
-
+        return id($d{property} => 'atom') . " on %$win%";
     }
 
     if ($name eq 'FreePixmap') {
-        # TODO: id cleanup
-        return "%$d{pixmap}%";
+        my $details = id($d{pixmap} => 'pixmap');
+        $mappings->delete_mapping($d{pixmap});
+        return $details;
     }
 
     if ($name eq 'FreeGC') {
-        # TODO: id cleanup
-        return "%$d{gc}%";
+        my $details = id($d{gc} => 'gcontext');
+        $mappings->delete_mapping($d{gc});
+        return $details;
     }
 
     if ($name eq 'CloseFont') {
-        # TODO: id cleanup
-        return "%$d{font}%";
+        my $details = id($d{font} => 'font');
+        $mappings->delete_mapping($d{font});
+        return $details;
     }
 
     if ($name eq 'ImageText8') {
         # TODO: ellipsize
-        return "%$d{drawable}% at $d{x}, $d{y}: $d{string}";
+        return id($d{drawable}) . " at $d{x}, $d{y}: $d{string}";
     }
 
     if ($name eq 'ClearArea') {
-        return "%$d{window}% ($d{x}, $d{y}) $d{width} x $d{height}";
+        return id($d{window} => 'window') . " ($d{x}, $d{y}) $d{width} x $d{height}";
     }
 
     if ($name eq 'UngrabKey') {
         # TODO: modifier
-        return "$d{key} on %$d{grab_window}%";
+        return "$d{key} on " . id($d{grab_window});
     }
-
-
-    # TODO: UnmapWindow
 
     undef
 }
@@ -415,39 +407,39 @@ sub event_icing {
     say "(event) icing for $name";
 
     if ($name eq 'MapNotify') {
-        return "%$d{window}%";
+        return id($d{window} => 'window');
     }
 
     if ($name eq 'MapRequest') {
-        return "%$d{window}% (parent %$d{parent}%)";
+        return id($d{window} => 'window') . ' (parent ' . id($d{parent} => 'window') . ')';
     }
 
     if ($name eq 'PropertyNotify') {
-        return "%atom_$d{atom}% on %$d{window}%"
+        return id($d{atom} => 'atom') . ' on ' . id($d{window} => 'window');
     }
 
     if ($name eq 'ConfigureNotify') {
-        return "%$d{window}% ($d{x}, $d{y}) $d{width} x $d{height}";
+        return id($d{window} => 'window') . " ($d{x}, $d{y}) $d{width} x $d{height}";
     }
 
     if ($name eq 'Expose') {
-        return "%$d{window}% ($d{x}, $d{y}) $d{width} x $d{height}, $d{count} following";
+        return id($d{window} => 'window') . " ($d{x}, $d{y}) $d{width} x $d{height}, $d{count} following";
     }
 
     if ($name eq 'FocusIn') {
-        return "%$d{event}% (mode = $d{mode}, detail = $d{detail})";
+        return id($d{event} => 'window') . " (mode = $d{mode}, detail = $d{detail})";
     }
 
     if ($name eq 'ReparentNotify') {
-        return "%$d{window}% now in %$d{parent}% at ($d{x}, $d{y})";
+        return id($d{window} => 'window') . ' now in ' . id($d{parent} => 'window') . " at ($d{x}, $d{y})";
     }
 
     if ($name eq 'NoExposure') {
-        return "%$d{drawable}%";
+        return id($d{drawable});
     }
 
     if ($name eq 'VisibilityNotify') {
-        return "%$d{window}% $d{state}";
+        return id($d{window} => 'window') . " $d{state}";
     }
 
     if ($name eq 'MappingNotify') {
@@ -455,15 +447,15 @@ sub event_icing {
     }
 
     if ($name eq 'EnterNotify') {
-        return "%$d{event}% at ($d{event_x}, $d{event_y})";
+        return id($d{event} => 'event') . " at ($d{event_x}, $d{event_y})";
     }
 
     if ($name eq 'KeyPress') {
-        return "key $d{detail} on %$d{event}%";
+        return "key $d{detail} on " . id($d{event});
     }
 
     if ($name eq 'UnmapNotify') {
-        return "%$d{window}%";
+        return id($d{window} => 'window');
     }
 
     undef
@@ -474,7 +466,7 @@ sub handle_request {
 
     my ($opcode) = unpack('c', $request);
 
-    # TODO: id-magie bei GetWindowAttributes
+    say "Handling request opcode $opcode";
 
     my $data = RequestDissector::dissect_request($request);
     if (defined($data) && length($data) > 5) {
