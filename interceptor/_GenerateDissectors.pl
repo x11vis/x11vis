@@ -131,7 +131,12 @@ sub dissect_element {
         # check for builtin types with > 1 byte
         if (defined($fmt) && $bytes > 1) {
             say $fh "    {";
+            # XXX: a reference to $length is not specified in bytes, but in entities of list-type?
+            if ($len eq '$length') {
+            say $fh "    my \$_listlen = \$length / $bytes;";
+            } else {
             say $fh "    my \$_listlen = $len;";
+            }
             say $fh "    my \$$listname = substr(\$pkt, $cnt, \$_listlen * $bytes);";
             say $fh "    my \@c;";
             say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
@@ -220,6 +225,10 @@ sub expr {
     return unless defined($el);
 
     if ($el->tag eq 'fieldref') {
+        # the 'length' field is special: we have it in current scope instead of
+        # in the moredetails hash
+        return '$length' if $el->text eq 'length';
+
         return $prefix . $el->text . '}';
     }
     if ($el->tag eq 'op') {
