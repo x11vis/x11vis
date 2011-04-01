@@ -64,6 +64,13 @@ sub dissect_element {
         my ($fmt, $bytes) = field_size($type);
         if (defined($fmt)) {
             say $fh "    $prefix$name} = unpack('$fmt', substr(\$pkt, $cnt, $bytes));";
+            if (defined($el->att('enum'))) {
+                say $fh "      $prefix$name} = DissectorHelper::enum_" . $el->att('enum') . "_value_to_strings($prefix$name});";
+            }
+            if (defined($el->att('altenum'))) {
+                say $fh "      my \$_val = DissectorHelper::enum_" . $el->att('altenum') . "_value_to_strings($prefix$name});";
+                say $fh "      $prefix$name} = \$_val if defined(\$_val);";
+            }
             return $bytes;
         }
 
