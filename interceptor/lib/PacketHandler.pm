@@ -20,12 +20,11 @@ use RequestDissector;
 use ReplyDissector;
 use EventDissector;
 use ErrorDissector;
+use Mappings;
 use FileOutput;
 use v5.10;
 
 with 'Elapsed';
-
-my $net_wm_name = undef;
 
 has 'conn_id' => (is => 'ro', isa => 'Int', required => 1);
 
@@ -68,6 +67,9 @@ has [ 'child_burst', 'x11_burst' ] => (
     is => 'rw',
     isa => 'Burst',
 );
+
+# shortcut to the Mappings singleton
+my $mappings = Mappings->instance;
 
 sub BUILD {
     my ($self) = @_;
@@ -130,9 +132,7 @@ sub reply_icing {
     return "%$d{focus}%" if $name eq 'GetInputFocus';
 
     if ($name eq 'InternAtom') {
-        if ($req_data->{moredetails}->{name} eq 'WM_NAME') {
-            $net_wm_name = $d{atom};
-        }
+        $mappings->add_atom($rd{name} => $d{atom});
         $self->add_mapping($d{atom}, 'atom_' . $d{atom});
         $self->dump_cleverness({
             id => 'atom_' . $d{atom},
@@ -159,7 +159,8 @@ sub reply_icing {
     }
 
     if ($name eq 'GetProperty') {
-        if ($req_data->{moredetails}->{property} == $net_wm_name) {
+        my $atom = $mappings->get_atom_xid('WM_NAME');
+        if (defined($atom) && $atom == $rd{property}) {
             $self->dump_cleverness({
                 id => $req_data->{moredetails}->{window},
                 title => $d{value},
@@ -346,6 +347,17 @@ sub request_icing {
     }
 
     if ($name eq 'ChangeProperty') {
+        my $atom = $mappings->get_atom_xid('WM_NAME');
+        if (defined($atom) && $atom == $d{property}) {
+            $self->dump_cleverness({
+                id => $d{window},
+                title => $d{data},
+                idtype => 'window',
+                moredetails => {
+                    name => $d{data},
+                }
+            });
+        }
         # TODO
         return "%atom_$d{property}% on %$d{window}%";
 
