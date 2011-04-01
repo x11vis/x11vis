@@ -10,6 +10,9 @@ use Data::Dumper;
 use AnyEvent::Socket;
 use AnyEvent::Handle;
 use AnyEvent;
+use JSON::XS;
+use FileOutput;
+use Mappings;
 use Moose;
 use PacketHandler;
 use v5.10;
@@ -147,6 +150,31 @@ sub _got_setup_reply {
             chunk => $length,
             sub {
                 my ($x11, $chunk) = @_;
+
+                # we are interested in the root window IDs
+                my ($vendor_len, $roots_len, $pmf_len) = unpack("x[LLLL]Sx[S]cc", $chunk);
+
+                # the reply up to the lists consists of LLLLSSccccccCCcccc = 16 + 4 + 6 + 2 + 4 = 32 bytes
+                # Extract and print the vendor as a safety check
+                my $vendor = substr($chunk, 32, $vendor_len);
+                say "[conn] Vendor = $vendor";
+
+                # after the vendor there is the list of pixmapformats. Every element is 8 bytes long
+                my $pos = 32 + $vendor_len + ($pmf_len * 8);
+
+                # now come the root entries
+                my ($root) = unpack('L', substr($chunk, $pos));
+                say "[conn] root window id = " . sprintf("0x%08x", $root);
+                my $id = Mappings->instance->id_for($root => 'window');
+                my $clever = encode_json({
+                    type => 'cleverness',
+                    id => $id,
+                    idtype => 'window',
+                    title => 'root',
+                });
+                FileOutput->instance->write($clever);
+
+                say "[conn] vendor_len = $vendor_len, roots_len = $roots_len, pmf_len = $pmf_len";
                 $self->client_handle->push_write($chunk);
                 $self->_push_client_read;
                 $self->_push_x11_read;

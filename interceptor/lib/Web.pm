@@ -35,7 +35,7 @@ get '/tracedata/output.json' => sub {
     #mime_type 'json' => 'application/json';
     #send_file('/tmp/output.json');
     header 'Content-Type' => 'application/json';
-    return io('output.json')->slurp . ']';
+    return '[' . io('output.json')->slurp . ']';
 };
 
 get '/templates/:file' => sub {

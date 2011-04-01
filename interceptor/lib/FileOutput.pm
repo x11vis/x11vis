@@ -20,16 +20,29 @@ has 'output_file' => (
     default => sub {
         open(my $fh, '>', 'output.json');
         $fh->autoflush(1);
-        # TODO: don't hardcode
-        print $fh qq|[\n{"type":"cleverness","id":176, "title":"root", "idtype":"window"}\n|;
         return $fh;
+    }
+);
+
+has 'already_written' => (
+    traits => [ 'Bool' ],
+    is => 'rw',
+    isa => 'Bool',
+    default => 0,
+    handles => {
+        wrote => 'set'
     }
 );
 
 sub write {
     my ($self, $data) = @_;
     my $fh = $self->output_file;
-    say $fh ', ' . $data;
+    if (!$self->already_written) {
+        $self->wrote;
+    } else {
+        print $fh ', ';
+    }
+    say $fh $data;
 }
 
 __PACKAGE__->meta->make_immutable;
