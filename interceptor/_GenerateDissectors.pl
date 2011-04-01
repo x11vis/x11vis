@@ -164,7 +164,7 @@ sub dissect_element {
             say $fh "      my \$_part = {};";
             my $off = 0;
             for my $child ($struct->children) {
-                $off += dissect_element($fh, $reqname, '$_part->{', "$cnt + (\$c * $bytes) + $off", $child);
+                $off += dissect_element($fh, $reqname, '$_part->{', "($cnt + (\$c * $bytes) + $off)", $child);
             }
             say $fh "      push \@c, \$_part;";
             say $fh "    }";
@@ -234,11 +234,12 @@ exit 0;
 }
 
 # XXX: well, this is not using 'expressions' correctly, only caring for value and bit tags
-sub generate_enum_to_str {
+sub generate_helper {
     open my $fh, '>', 'gen/DissectorHelper.pm';
     say $fh 'package DissectorHelper;';
     say $fh 'use Moose;';
     say $fh '';
+
     for my $enum ($xml->root->children('enum')) {
         my $name = $enum->att('name');
         say $fh "sub enum_${name}_value_to_strings {";
@@ -537,8 +538,8 @@ __PACKAGE__->meta->make_immutable;
 eot
 }
 
-say "--- GENERATING ENUM2STR ---";
-generate_enum_to_str();
+say "--- GENERATING HELPER ---";
+generate_helper();
 
 say "--- GENERATING REQUESTS ---";
 generate_requests();
