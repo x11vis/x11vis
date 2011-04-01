@@ -1,0 +1,55 @@
+#!/usr/bin/env perl
+# vim:ts=4:sw=4:expandtab
+# x11vis - an X11 protocol visualizer
+# © 2011 Michael Stapelberg and contributors (see ../LICENSE)
+
+use strict;
+use warnings;
+use Data::Dumper;
+use Getopt::Long;
+use AnyEvent;
+use AnyEvent::Socket;
+use AnyEvent::Handle;
+use JSON::XS;
+use v5.10;
+
+my $marker = undef;
+my $result = GetOptions(
+    "marker=s" => \$marker
+);
+
+if (defined($marker)) {
+    say "Setting marker $marker...";
+    my $cv = AE::cv;
+    my $hdl;
+    tcp_connect "unix/", "/tmp/x11vis.sock", sub {
+        my ($fh) = @_
+            or die "Connecting to x11vis failed (IPC): $!";
+
+        $hdl = AnyEvent::Handle->new(
+            fh => $fh,
+            on_error => sub {
+                my ($hdl, $fatal, $msg) = @_;
+                warn "got error $msg\n";
+                $hdl->destroy;
+            }
+        );
+        $hdl->push_write(encode_json(
+            {
+                type => 'marker',
+                marker => $marker,
+                source => 'cli',
+            }
+        ) . "\n");
+        $hdl->push_read(line => sub {
+            my ($hdl, $line) = @_;
+            my $json = decode_json($line);
+            if (!$json->{ack}) {
+                die "Error";
+            }
+            $cv->send;
+        });
+
+    };
+    $cv->recv;
+}
