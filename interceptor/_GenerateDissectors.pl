@@ -206,8 +206,9 @@ sub dissect_element {
                 say $fh "      my \$ex = unpack('$fmt', substr(\$pkt, \$_cnt, 4));";
                 # handle the data itself: either just an int, or an enum, or…
                 if (($xml->root->get_xpath('enum[@name="' . $item->att('name') . '"]')) > 0) {
-                    say $fh "      my \@_data = DissectorHelper::enum_" . $item->att('name') . "_value_to_strings(\$ex);";
-                    say $fh "      $prefix" . lc $item->att('name') . "} = [ \@_data ];";
+                    say $fh "      my \$_data = DissectorHelper::enum_" . $item->att('name') . "_value_to_strings(\$ex);";
+                    say $fh "      \$_data = \$ex unless defined(\$_data);";
+                    say $fh "      $prefix" . lc $item->att('name') . "} = \$_data;";
                 } else {
                     say $fh "      $prefix" . lc $item->att('name') . "} = \$ex;";
                 }
@@ -277,7 +278,7 @@ sub generate_helper {
             }
         }
         if ($is_bitmask) {
-            say $fh '  return @retvals;';
+            say $fh '  return \@retvals;';
         } else {
             say $fh '  return undef;';
         }
