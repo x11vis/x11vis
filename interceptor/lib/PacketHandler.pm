@@ -165,7 +165,7 @@ sub reply_icing {
 
     if ($name eq 'GetProperty') {
         my $atom = $mappings->get_atom_xid('WM_NAME');
-        if (defined($atom) && $atom == $rd{property}) {
+        if (defined($atom) && $atom == $rd{property} && $d{type} != 0) {
             $self->dump_cleverness({
                 id => $mappings->id_for($rd{window}, 'window'),
                 title => $d{value},
