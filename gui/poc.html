@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>X11vis gui</title>
+<meta charset="utf8">
+<script type="text/javascript" src="x11vis.js"></script>
+<script type="text/javascript" src="markerbar.js"></script>
+<script type="text/javascript" src="templates.js"></script>
+<script type="text/javascript" src="jquery.min.js"></script>
+<script type="text/javascript" src="jquery.viewport.mini.js"></script>
+<script type="text/javascript" src="jquery.scrollTo-1.4.2-min.js"></script>
+<script type="text/javascript" src="underscore-min.js"></script>
+<link href="style.css" rel="stylesheet" type="text/css">
+</head>
+<body>
+<div id="status">
+Loading…
+</div>
+
+<div id="rightpane">
+<div id="inspector">
+<h1>Inspector</h1>
+</div>
+
+<div>
+<h1>Legend</h1>
+<div class="id_name" style="background-color: #f75d59; width: 100px; margin-bottom: 5px">Window</div>
+<div class="id_name" style="background-color: #82caff; width: 100px">Atom</div>
+</div>
+
+<!-- TODO: filter_packets -->
+<div id="display">
+<h1>Display</h1>
+
+</div>
+
+<div id="filter_clients">
+<h1>Clients</h1>
+
+</div>
+
+</div>
+
+<div id="markerbar">
+<span id="prevmarker">
+</span>
+<span id="nextmarker">
+</span>
+&nbsp;
+</div>
+
+<!--<script type="text/javascript" src="output.js"></script>-->
+<script type="text/javascript" src="gui.js"></script>
+</body>
+</html>

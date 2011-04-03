@@ -1,0 +1,139 @@
+body {
+    /*font-family: helvetica, arial, freesans, clean, sans-serif;*/
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    padding-bottom: 1em;
+    /*font: normal normal normal 13,34px/normal helvetica, arial, freesans, clean, sans-serif;*/
+}
+
+/* General styles */
+.id_name {
+    border: 1px solid #736f6e;
+    padding-left: 2px;
+    padding-right: 2px;
+}
+
+.marker {
+    background-color: #ffc0c0;
+    border: 2px solid black;
+    margin: 1em;
+    padding: .5em;
+}
+
+#markerbar {
+    background-color: #0f0f0f;
+    color: #f0f0f0;
+    overflow: hidden;
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+}
+
+#prevmarker {
+    cursor: pointer;
+}
+
+#nextmarker {
+    cursor: pointer;
+    position: fixed;
+    right: 0;
+    bottom: 0;
+}
+
+.folded {
+    margin-left: 1em;
+    padding-left: 1px;
+}
+
+.reqbuf {
+    width: 68%;
+    background-color: #c0c0c0;
+    border: 1px solid black;
+    margin-bottom: 1em;
+}
+
+.reqbuf .header {
+    background-color: #f4f4f4;
+    overflow: hidden;
+}
+.reqbuf .header p {
+    margin: 0;
+    padding: 0;
+}
+.client {
+    font-size: 125%;
+    float: left;
+
+}
+.middle_detail {
+    float: right;
+    padding-right: 0.5em;
+}
+
+.arrow {
+    margin: 0;
+    padding: 0;
+    font-size: 150%;
+    text-align: center;
+}
+
+.request_info {
+    margin: 0;
+    padding: 0;
+}
+
+.receiver {
+    font-size: 150%;
+    float: right;
+}
+
+/* request */
+.expandbtn {
+    width: 12px;
+    height: 9px;
+    margin: 0;
+    padding: 0;
+    float: left;
+}
+
+.expandbtn img {
+    margin-left: 1px;
+}
+
+div.request {
+    margin-left: 1em;
+}
+
+.sequence {
+    font-size: 80%;
+}
+
+.name {
+    font-weight: bold;
+}
+
+.moredetails {
+    display: none;
+    margin-left: 2em;
+    background: #ffffff;
+    padding-left: 0.25em;
+}
+
+.moredetails p {
+    margin: 0;
+}
+
+#rightpane {
+    overflow: hidden;
+    float: right;
+    border: 1px solid black;
+    width: 27%;
+}
+
+#inspector {
+}
+
+.legendcolor {
+    width: 100px;
+}
