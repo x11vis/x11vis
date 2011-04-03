@@ -127,7 +127,7 @@ sub dissect_element {
 
         if (defined($fmt) && $bytes == 1) {
             say $fh "    $prefix$listname} = substr(\$pkt, $cnt, $len);";
-            return 0;
+            return "$len";
         }
 
         # check for builtin types with > 1 byte
@@ -158,7 +158,10 @@ sub dissect_element {
 
             my $bytes = 0;
             for my $child ($struct->children) {
-                $bytes += dissect_element($fh, $reqname, '#', $bytes, $child);
+                my $size = dissect_element($fh, $reqname, '#', $bytes, $child);
+                if ($size =~ /^[0-9]+$/) {
+                    $bytes += $size;
+                }
             }
             if ($fixlen) {
                 $len .= ' / ' . $bytes;
@@ -167,11 +170,12 @@ sub dissect_element {
             say $fh "    {";
             say $fh "    my \$_listlen = $len;";
             say $fh "    my \@c;";
+            say $fh "    my \$_cnt = $cnt;";
             say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
             say $fh "      my \$_part = {};";
-            my $off = 0;
             for my $child ($struct->children) {
-                $off += dissect_element($fh, $reqname, '$_part->{', "($cnt + (\$c * $bytes) + $off)", $child);
+                my $size = dissect_element($fh, $reqname, '$_part->{', "\$_cnt", $child);
+                say $fh " \$_cnt += $size;";
             }
             say $fh "      push \@c, \$_part;";
             say $fh "    }";
@@ -328,7 +332,10 @@ eot
 
         # iterate through the remaining children
         for my $child (@children) {
-            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            my $size = dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            if ($size =~ /^[0-9]+$/) {
+                $cnt += $size;
+            }
         }
 
         say $fh  <<'eot';
@@ -394,7 +401,10 @@ eot
 
         # iterate through the children
         for my $child (@children) {
-            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            my $size = dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            if ($size =~ /^[0-9]+$/) {
+                $cnt += $size;
+            }
         }
 
         say $fh  <<'eot';
