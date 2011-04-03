@@ -14,11 +14,16 @@ $(document).ready(function() {
     tmpl = template_manager(function() {
         console.log("templates loaded");
 
-        console.log("Requesting JSON trace file");
-        $.getJSON('/tracedata/output.json', function(indata) {
-            console.log("JSON trace file loaded, rendering...");
+        $.getJSON('/gen/predefined_atoms.json', function(indata) {
+            console.log("Predefined atoms loaded");
             var vis = x11vis();
-            vis.process_json(indata);
+            vis.process_cleverness(indata);
+
+            console.log("Requesting JSON trace file");
+            $.getJSON('/tracedata/output.json', function(indata) {
+                console.log("JSON trace file loaded, rendering...");
+                vis.process_json(indata);
+            });
         });
     });
 

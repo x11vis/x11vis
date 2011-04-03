@@ -15,6 +15,7 @@ use FileOutput;
 use Mappings;
 use Moose;
 use PacketHandler;
+use PredefinedAtoms;
 use v5.10;
 
 has 'fh' => (is => 'ro', isa => 'Ref', required => 1);
@@ -165,6 +166,7 @@ sub _got_setup_reply {
                 # now come the root entries
                 my ($root) = unpack('L', substr($chunk, $pos));
                 say "[conn] root window id = " . sprintf("0x%08x", $root);
+                PredefinedAtoms::add_predefined_atoms;
                 my $id = Mappings->instance->id_for($root => 'window');
                 my $clever = encode_json({
                     type => 'cleverness',

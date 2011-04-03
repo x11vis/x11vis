@@ -279,9 +279,16 @@ x11vis = (function() {
         markerbar().update();
     };
 
+    var process_cleverness = function(json) {
+        json.forEach(function(obj) {
+            save_cleverness(obj);
+        });
+    };
+
     return function() {
         return {
-            process_json: process_json
+            process_json: process_json,
+            process_cleverness: process_cleverness
         };
     };
 })();

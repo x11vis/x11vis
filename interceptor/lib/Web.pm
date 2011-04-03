@@ -31,6 +31,11 @@ get '/gui/:file' => sub {
     return io('../gui/' . params->{file})->slurp;
 };
 
+get '/gen/predefined_atoms.json' => sub {
+    header 'Content-Type' => 'application/json';
+    return '[' . io('gen/predefined_atoms.json')->slurp . ']';
+};
+
 get '/tracedata/output.json' => sub {
     #mime_type 'json' => 'application/json';
     #send_file('/tmp/output.json');
