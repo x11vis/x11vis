@@ -249,6 +249,12 @@ x11vis = (function() {
                 $(this).append(details[id].title);
                 if (details[id].idtype === 'atom') {
                     $(this).css('background-color', '#82caff');
+                } else if (details[id].idtype === 'font') {
+                    $(this).css('background-color', '#f87217');
+                } else if (details[id].idtype === 'pixmap') {
+                    $(this).css('background-color', '#d462ff');
+                } else if (details[id].idtype === 'gcontext') {
+                    $(this).css('background-color', '#f433ff');
                 } else {
                     $(this).css('background-color', '#f75d59');
                 }

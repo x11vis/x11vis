@@ -66,6 +66,26 @@ sub id_for {
         class => $class
     });
 
+    if ($class eq 'pixmap') {
+        my $clever = encode_json({
+            type => 'cleverness',
+            id => $id,
+            title => 'pixmap ' . $counters{$class},
+            idtype => 'pixmap',
+        });
+        FileOutput->instance->write($clever);
+    }
+
+    if ($class eq 'gcontext') {
+        my $clever = encode_json({
+            type => 'cleverness',
+            id => $id,
+            title => 'gc ' . $counters{$class},
+            idtype => 'gcontext',
+        });
+        FileOutput->instance->write($clever);
+    }
+
     return $id;
 }
 
