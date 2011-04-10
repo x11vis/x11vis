@@ -107,16 +107,7 @@ x11vis = (function() {
         var div = $(tmpl.get('request_buffer'));
         div.find(".request_info").append(burst.elapsed);
 
-        // TODO: add direction also to burst
-        var is_reply = false;
-        $.each(burst.packets, function(idx, elm) {
-            if (elm.type === 'reply') {
-                is_reply = true;
-            } else if (elm.type === 'event') {
-                is_reply = true;
-            }
-        });
-        if (is_reply) {
+        if (burst.direction === 'to_client') {
             div.css('margin-left', '2em');
             div.find(".client").replaceWith(parse_detail('%conn_' + burst.fd + '%←'));
         } else {

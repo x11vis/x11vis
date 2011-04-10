@@ -74,8 +74,8 @@ my $mappings = Mappings->instance;
 
 sub BUILD {
     my ($self) = @_;
-    $self->child_burst(Burst->new(conn_id => $self->conn_id));
-    $self->x11_burst(Burst->new(conn_id => $self->conn_id));
+    $self->child_burst(Burst->new(conn_id => $self->conn_id, direction => 'to_server'));
+    $self->x11_burst(Burst->new(conn_id => $self->conn_id, direction => 'to_client'));
 }
 
 sub dump_request {

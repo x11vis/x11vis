@@ -22,6 +22,8 @@ has 'start_timestamp' => (
 
 has 'conn_id' => (is => 'ro', isa => 'Int', required => 1);
 
+has 'direction' => (is => 'ro', isa => 'Str', required => 1);
+
 has 'elapsed' => (
     is => 'rw',
     isa => 'Num'
@@ -69,7 +71,7 @@ sub finish {
         $packets = join(', ', $self->packets);
     }
     my $fo = FileOutput->instance;
-    $fo->write('{"type":"burst", "fd": '. $self->conn_id . ', "elapsed":' . $self->elapsed . ', "packets":[' . $packets . ']}');
+    $fo->write('{"type":"burst", "direction":"' . $self->direction . '", "fd": '. $self->conn_id . ', "elapsed":' . $self->elapsed . ', "packets":[' . $packets . ']}');
     $self->clear_packets;
     $self->end_of_burst;
 }
