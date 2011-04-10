@@ -119,6 +119,6 @@ my @lines = map {
         idtype => 'atom',
         title => $atoms{$_}
     }) } keys %atoms;
-say $fh join(', ', @lines);
+say $fh '[' . join(', ', @lines) . ']';
 
 close($fh);
