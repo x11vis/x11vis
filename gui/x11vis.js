@@ -49,17 +49,24 @@ x11vis = (function() {
     }
 
     function create_request_layout(obj) {
-        var rdiv = $(tmpl.get('request'));
+        // concat'ing strings instead of using the DOM saves us ~ 350 ms
+        // (measured with 547 bursts of a typical i3 startup)
+
+        var html = '<div class="request singlepacket" style="background-color: ' + type_to_color(obj.type) + '">\
+        <div class="expandbtn"></div>\
+        <span class="sequence">' + obj.seq + '</span>\
+        <span class="name">' + obj.name + '</span>\
+        <span class="details">' + parse_detail(obj.details) + '</span>\
+        <span class="moredetails"></span>\
+        </div>\
+        ';
+        var rdiv = $(html);
 
         // store object type and moredetails for later (used type_to_color and
         // detail_obj_to_html, respectively)
         rdiv.data('type', obj.type);
         rdiv.data('moredetails', obj.moredetails);
 
-        rdiv.css('background-color', type_to_color(obj.type));
-        rdiv.find(".sequence").append(obj.seq);
-        rdiv.find(".name").append(obj.name);
-        rdiv.find(".details").append(parse_detail(obj.details));
         return rdiv;
     }
 
