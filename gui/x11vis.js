@@ -272,7 +272,9 @@ x11vis = (function() {
     }
 
     var process_json = function(json) {
-        json.forEach(function(obj) {
+        var len = json.length;
+        for (var c = 0; c < len; c++) {
+            var obj = json[c];
             if (obj.type === 'cleverness') {
                 save_cleverness(obj);
             } else if (obj.type === 'marker') {
@@ -280,7 +282,7 @@ x11vis = (function() {
             } else {
                 handle_burst(obj);
             }
-        });
+        }
 
         update_hide_packets();
         update_hide_clients();
