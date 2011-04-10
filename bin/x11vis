@@ -11,7 +11,11 @@ use AnyEvent;
 use AnyEvent::Socket;
 use AnyEvent::Handle;
 use JSON::XS;
+use Errno qw(EAGAIN);
+use FindBin;
 use v5.10;
+
+Getopt::Long::Configure('pass_through');
 
 my $marker = undef;
 my $result = GetOptions(
@@ -52,4 +56,65 @@ if (defined($marker)) {
 
     };
     $cv->recv;
+    exit 0;
 }
+
+#
+# Checks if an interceptor is running by checking /tmp/x11vis.sock and starts it
+# if necessary.
+#
+sub start_interceptor {
+    my $cv = AE::cv;
+    tcp_connect 'unix/', '/tmp/x11vis.sock', sub { $cv->send(!!$_[0]) };
+    return if $cv->recv;
+
+    say "need to start the interceptor";
+    my $prefix = "$FindBin::RealBin";
+    say "Trying $prefix/../lib/x11vis/interceptor/interceptor.pl";
+    my $pid;
+    if (($pid = fork())) {
+        say "parent, not doing anything";
+    } elsif (defined($pid)) {
+        close(STDIN);
+        close(STDOUT);
+        close(STDERR);
+        exec "$prefix/../lib/x11vis/interceptor/interceptor.pl";
+    } elsif ($! == EAGAIN) {
+# TODO
+        say "again!";
+    } else {
+        say "error forking: $!";
+        exit 1;
+    }
+
+    my $timeout;
+    $timeout = AE::timer 5, 0, sub {
+        say "Interceptor failed to start within 5 seconds.";
+        exit 1;
+    };
+
+    $cv = AE::cv;
+    my $t;
+    $t = AE::timer 0, 0.125, sub {
+        tcp_connect 'unix/', '/tmp/x11vis.sock', sub {
+            my ($fh) = @_;
+            if ($fh) {
+                undef $t;
+                undef $timeout;
+                $cv->send(1);
+                return;
+            }
+        };
+    };
+
+    $cv->recv;
+}
+
+exit 0 if @ARGV == 0;
+
+start_interceptor;
+
+my $cmdline = join(' ', @ARGV);
+say qq|Interceptor running, now starting "$cmdline"|;
+$ENV{DISPLAY} = '127.0.0.1:0';
+exec @ARGV;
