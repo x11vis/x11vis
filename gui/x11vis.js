@@ -176,17 +176,23 @@ x11vis = (function() {
     }
 
     function fold_boring_packets() {
+        // TODO: marking packets for folding could be done in the interceptor
         // go through all reqbufs and fold series of 'boring' requests (like InternAtom)
         var boring_packets = [ 'InternAtom', 'GrabKey', 'ImageText8', 'ImageText16' ];
         $('div.reqbuf').each(function() {
             var last_name = '';
             var to_fold = [];
             var samecnt = 0;
-            // TODO: check if there are 5 singlepackets at all before iterating
-            $(this).find('div.singlepacket').each(function() {
-                var name = $(this).find('span.name').text();
+            var singlepkts = $(this).find('div.singlepacket span.name');
+            var len = singlepkts.length;
+            if (len < 5) {
+                return;
+            }
+            var c = len;
+            while (c--) {
+                var name = $(singlepkts[c]).text();
                 if ($.inArray(name, to_fold) !== -1) {
-                    return;
+                    continue;
                 }
                 samecnt = (last_name === name ? samecnt + 1 : 0);
                 if (samecnt === 5 && $.inArray(last_name, boring_packets) !== -1) {
@@ -194,7 +200,7 @@ x11vis = (function() {
                     to_fold.push(last_name);
                 }
                 last_name = name;
-            });
+            }
 
             var that = this;
             $.each(to_fold, function(idx, elm) {
