@@ -20,9 +20,13 @@ $(document).ready(function() {
             vis.process_cleverness(indata);
 
             console.log("Requesting JSON trace file");
+            var at_req = (new Date).getTime();
             $.getJSON('/tracedata/output.json', function(indata) {
-                console.log("JSON trace file loaded, rendering...");
+                var got_data = (new Date).getTime();
+                console.log('JSON parsed in ' + (got_data - at_req) + 'ms');
                 vis.process_json(indata);
+                var after_proc = (new Date).getTime();
+                console.log('processing took ' + (after_proc - got_data) + 'ms');
             });
         });
     });
