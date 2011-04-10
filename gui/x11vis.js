@@ -192,7 +192,7 @@ x11vis = (function() {
             var that = this;
             $.each(to_fold, function(idx, elm) {
                 var folded = $('<div class="folded"></div>');
-                var info = $('<div class="folded_info"><img src="/gui/toggle-expand.gif"> lots of <strong>' + elm + '</strong></div>');
+                var info = $('<div class="folded_info"><img src="/toggle-expand.gif"> lots of <strong>' + elm + '</strong></div>');
                 var to_expand = $('<div class="to_expand" style="display: none"></div>');
                 var elements = $(that).find('div.singlepacket span.name:econtains("' + elm + '")').parent();
                 var type = elements.first().data('type');
@@ -230,7 +230,7 @@ x11vis = (function() {
                 var expandBtn = $(this).children('.expandbtn');
                 // if the expand image is not yet loaded, add it
                 if (expandBtn.find('img').size() === 0) {
-                    expandBtn.append($('<img src="/gui/toggle-expand.gif">'));
+                    expandBtn.append($('<img src="/toggle-expand.gif">'));
                 }
                 expandBtn.find('img').css('display', 'inline');
                 $(this).css('background-color', '#eff8c6');
