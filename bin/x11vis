@@ -24,7 +24,7 @@ if (defined($marker)) {
     my $hdl;
     tcp_connect "unix/", "/tmp/x11vis.sock", sub {
         my ($fh) = @_
-            or die "Connecting to x11vis failed (IPC): $!";
+            or return $cv->croak("Connecting to x11vis failed (IPC): $!");
 
         $hdl = AnyEvent::Handle->new(
             fh => $fh,
