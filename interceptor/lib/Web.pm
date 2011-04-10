@@ -10,7 +10,6 @@ package Web;
 use strict;
 use warnings;
 use Dancer ':syntax';
-use x11vis;
 use IO::All;
 use v5.10;
 
