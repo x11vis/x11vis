@@ -256,25 +256,28 @@ x11vis = (function() {
 
     function display_cleverness() {
         // resolve all the cleverness placeholders
-        $('span.id_name').each(function() {
-            var id = $(this).attr('id');
+        var cleverspans = $('span.id_name');
+        var c = cleverspans.length;
+        while (c--) {
+            var t = $(cleverspans[c]);
+            var id = t.attr('id');
             if (details[id] !== undefined) {
-                $(this).append(details[id].title);
+                t.append(details[id].title);
                 if (details[id].idtype === 'atom') {
-                    $(this).css('background-color', '#82caff');
+                    t.css('background-color', '#82caff');
                 } else if (details[id].idtype === 'font') {
-                    $(this).css('background-color', '#f87217');
+                    t.css('background-color', '#f87217');
                 } else if (details[id].idtype === 'pixmap') {
-                    $(this).css('background-color', '#d462ff');
+                    t.css('background-color', '#d462ff');
                 } else if (details[id].idtype === 'gcontext') {
-                    $(this).css('background-color', '#f433ff');
+                    t.css('background-color', '#f433ff');
                 } else {
-                    $(this).css('background-color', '#f75d59');
+                    t.css('background-color', '#f75d59');
                 }
             } else {
-                $(this).append(id);
+                t.append(id);
             }
-        });
+        }
     }
 
     var process_json = function(json) {
