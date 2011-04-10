@@ -1,0 +1,11 @@
+Get the following modules from CPAN:
+
+AnyEvent
+AnyEvent::Socket
+Twiggy
+Dancer
+IO::All
+JSON::XS
+Moose
+MooseX::Singleton
+XML::Twig
