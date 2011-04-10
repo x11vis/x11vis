@@ -1,5 +1,0 @@
-• figure out the best way to dissect events (using xcb? xcb-proto? the x11 wire protocol definition?)
-• actually dump events
-• more work on the gui
-
-• be clever (provide more nice details)
