@@ -131,7 +131,7 @@ sub reply_icing {
     my $name = $data->{name};
     my %d = %{$data->{moredetails}};
 
-    say "(reply) icing for $name, data = " . Dumper(\%d);
+    #say "(reply) icing for $name, data = " . Dumper(\%d);
     my $req_data = $self->type_of_reply($data->{seq});
     my %rd = %{$req_data->{moredetails}};
 
@@ -152,8 +152,17 @@ sub reply_icing {
     }
 
     if ($name eq 'GetAtomName') {
-        # TODO: update mapping
-        return "$d{$name}";
+        $mappings->add_atom($d{name} => $rd{atom});
+        my $id = $mappings->id_for($rd{atom} => 'atom');
+        $self->dump_cleverness({
+            id => $id,
+            title => $d{name},
+            idtype => 'atom',
+            moredetails => {
+                name => $d{name},
+            }
+        });
+        return "$d{name}";
     }
 
     if ($name eq 'GetGeometry') {
@@ -162,6 +171,22 @@ sub reply_icing {
 
     if ($name eq 'TranslateCoordinates') {
         return "($d{dst_x}, $d{dst_y}) on " . id($rd{dst_window});
+    }
+
+    if ($name eq 'GetWindowAttributes') {
+        return id($rd{window}) . " class $d{class}, state $d{map_state}, o_redir $d{override_redirect}";
+    }
+
+    if ($name eq 'QueryBestSize') {
+        return "$d{width} x $d{height}";
+    }
+
+    if ($name eq 'ListExtensions') {
+        return join(', ', map { $_->{name} } @{$d{names}});
+    }
+
+    if ($name eq 'ListProperties') {
+        return id($rd{window} => 'window') . ' has ' . join(', ', map { id($_ => 'atom') } @{$d{atoms}});
     }
 
     if ($name eq 'GetProperty') {
@@ -176,11 +201,13 @@ sub reply_icing {
                 }
             });
         }
-        #if ($d{value} == 0) {
-        #    return 'not set';
-        #} else {
-            return $d{value} . ' (type ' . id($d{type} => 'atom') . ')';
-        #}
+        my $details = id($rd{property} => 'atom');
+        if ($d{type} == 0) {
+            $details .= ' is not set';
+        } else {
+            $details .= " = $d{value} (type " . id($d{type} => 'atom') . ')';
+        }
+        return $details . ' on ' . id($rd{window} => 'window');
     }
 
     if ($name eq 'QueryTree') {
@@ -203,8 +230,8 @@ sub request_icing {
     say "icing for $name, data = " . Dumper($data);
 
     # these requests have no details
-    return '' if $name eq 'GetInputFocus';
-    return '' if $name eq 'GetModifierMapping';
+    my @no_details = qw(GetInputFocus GetModifierMapping ListExtensions);
+    return '' if $name ~~ @no_details;
 
     # display the ASCII names of atoms and extensions
     return $d{name} if $name eq 'InternAtom';
@@ -212,7 +239,7 @@ sub request_icing {
     return $d{name} if $name eq 'QueryExtension';
     return id($d{focus} => 'window') if $name eq 'SetInputFocus';
 
-    my @single_window = qw(MapWindow DestroySubwindows UnmapWindow);
+    my @single_window = qw(MapWindow MapSubWindows DestroySubwindows UnmapWindow ListProperties);
     return id($d{window} => 'window') if $name ~~ @single_window;
 
     if ($name eq 'DestroyWindow') {
@@ -273,8 +300,13 @@ sub request_icing {
     }
 
     if ($name eq 'OpenFont') {
-        $mappings->id_for($d{fid} => 'font');
-        return "$d{name}";
+        my $id = $mappings->id_for($d{fid} => 'font');
+        $self->dump_cleverness({
+            id => $id,
+            title => $d{name},
+            idtype => 'font',
+        });
+        return "%$id%";
     }
 
     if ($name eq 'ListFontsWithInfo' ||
@@ -396,6 +428,12 @@ sub request_icing {
         return "$d{key} on " . id($d{grab_window});
     }
 
+    if ($name eq 'QueryBestSize') {
+        if ($d{class} eq 'LargestCursor') {
+            return 'largest cursor size on ' . id($d{drawable} => 'window');
+        }
+    }
+
     undef
 }
 
@@ -459,6 +497,8 @@ sub event_icing {
         return id($d{window} => 'window');
     }
 
+    # TODO: MotionNotify
+
     undef
 }
 
@@ -507,7 +547,7 @@ sub handle_reply {
 
     my $data = ReplyDissector::dissect_reply($reply, $self);
     if (defined($data) && length($data) > 5) {
-        say "data = " . Dumper($data);
+        #say "data = " . Dumper($data);
         ## add the icing to the cake
         my $details = $self->reply_icing($data);
         $details = '<strong>NOT YET IMPLEMENTED</strong>' unless defined($details);
