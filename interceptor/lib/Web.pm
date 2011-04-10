@@ -10,29 +10,17 @@ package Web;
 use strict;
 use warnings;
 use Dancer ':syntax';
+use FindBin;
 use IO::All;
 use v5.10;
 
+set logger => 'console';
+set log => 'debug';
+set charset => 'utf-8';
+set public => "$FindBin::RealBin/../gui/";
+
 get '/' => sub {
-    # for now, we redirect to /gui/
-    redirect '/gui/';
-};
-
-get '/gui/' => sub {
-    return io('../gui/poc.html')->slurp;
-};
-
-get '/gui/:file' => sub {
-    if (params->{file} =~ /\.css$/) {
-        header 'Content-Type' => 'text/css';
-    }
-    #sendfile('../gui/' . params->{file});
-    return io('../gui/' . params->{file})->slurp;
-};
-
-get '/gen/predefined_atoms.json' => sub {
-    header 'Content-Type' => 'application/json';
-    return '[' . io('gen/predefined_atoms.json')->slurp . ']';
+    send_file 'poc.html';
 };
 
 get '/tracedata/output.json' => sub {
@@ -40,10 +28,6 @@ get '/tracedata/output.json' => sub {
     #send_file('/tmp/output.json');
     header 'Content-Type' => 'application/json';
     return '[' . io('output.json')->slurp . ']';
-};
-
-get '/templates/:file' => sub {
-    return io('../gui/templates/' . params->{file})->slurp;
 };
 
 1
