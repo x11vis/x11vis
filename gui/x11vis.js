@@ -73,10 +73,11 @@ x11vis = (function() {
     function parse_detail(detail) {
         var result = detail;
         var matches = detail.match(/%([^%]+)%/g) || [];
-        matches.forEach(function(m) {
-            var id = m.replace(/%/g, '');
-            result = result.replace(m, '<span class="id_name" id="' + id + '"></span>');
-        });
+        var c = matches.length;
+        while (c--) {
+            var id = matches[c].replace(/%/g, '');
+            result = result.replace(matches[c], '<span class="id_name" id="' + id + '"></span>');
+        }
         return result;
     }
 
@@ -115,13 +116,15 @@ x11vis = (function() {
             div.css('margin-right', '2em');
         }
 
-        burst.packets.forEach(function(obj) {
+        var c = burst.packets.length;
+        while (c--) {
+            var obj = burst.packets[c];
             if (obj.type === 'cleverness') {
                 save_cleverness(obj);
             } else {
                 div.append(create_request_layout(obj));
             }
-        });
+        }
 
         $('body').append(div);
     }
