@@ -116,8 +116,8 @@ x11vis = (function() {
             div.css('margin-right', '2em');
         }
 
-        var c = burst.packets.length;
-        while (c--) {
+        var len = burst.packets.length;
+        for (var c = 0; c < len; c++) {
             var obj = burst.packets[c];
             if (obj.type === 'cleverness') {
                 save_cleverness(obj);
