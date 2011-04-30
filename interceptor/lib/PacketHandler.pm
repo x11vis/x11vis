@@ -359,7 +359,9 @@ sub request_icing {
         say "left:" . Dumper(\%d);
         if ((keys %d) == 1) {
             my $key = (keys %d)[0];
-            if (ref($d{$key}) eq 'ARRAY') {
+            if ($key eq 'cursor') {
+                $details .= ' cursor=' . id($d{cursor} => 'cursor');
+            } elsif (ref($d{$key}) eq 'ARRAY') {
                 $details .= " $key=" . join(', ', @{$d{$key}});
             } else {
                 $details .= " $key=$d{$key}";
@@ -432,6 +434,10 @@ sub request_icing {
         if ($d{class} eq 'LargestCursor') {
             return 'largest cursor size on ' . id($d{drawable} => 'window');
         }
+    }
+
+    if ($name eq 'CreateGlyphCursor') {
+        return id($d{cid} => 'cursor') . " from char $d{source_char} of " . id($d{source_font} => 'font');
     }
 
     undef
@@ -532,7 +538,7 @@ sub handle_error {
         # add the icing to the cake
         #my $details = $self->error_icing($data);
         my $details = undef;
-        $details = '<strong>NOT YET IMPLEMENTED</strong>' unless defined($details);
+        $details = 'bad_value=' . id($data->{moredetails}->{bad_value});
         $data->{details} = $details;
         $self->dump_error($data);
         return;

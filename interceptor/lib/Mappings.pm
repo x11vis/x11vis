@@ -42,6 +42,7 @@ my %prefixes = (
     pixmap => 'p',
     font => 'f',
     gcontext => 'g',
+    cursor => 'c',
 );
 
 my %counters = ();
