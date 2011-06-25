@@ -127,7 +127,7 @@ my $twiggy = Twiggy::Server->new(
 
 my $app = sub {
     my $env = shift;
-    my $req = Dancer::Request->new($env);
+    my $req = Dancer::Request->new(env => $env);
     Dancer->dance($req);
 };
 
