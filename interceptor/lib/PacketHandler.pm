@@ -370,6 +370,24 @@ sub request_icing {
         return $details;
     }
 
+    if ($name eq 'ChangeGC') {
+        my $details = id($d{gc} => 'gcontext');
+        delete $d{gc};
+        delete $d{value_mask};
+        if ((keys %d) == 1) {
+            my $key = (keys %d)[0];
+            if ($key eq 'foreground' || $key eq 'background') {
+                # TODO: colorpixel to hex
+                $details .= " $key=" ;
+            } elsif (ref($d{$key}) eq 'ARRAY') {
+                $details .= " $key=" . join(', ', @{$d{$key}});
+            } else {
+                $details .= " $key=$d{$key}";
+            }
+        }
+        return $details;
+    }
+
     if ($name eq 'ConfigureWindow') {
         my $details = id($d{window} => 'window');
         if (exists $d{x} && exists $d{y}) {
@@ -438,6 +456,14 @@ sub request_icing {
 
     if ($name eq 'CreateGlyphCursor') {
         return id($d{cid} => 'cursor') . " from char $d{source_char} of " . id($d{source_font} => 'font');
+    }
+
+    if ($name eq 'SetSelectionOwner') {
+        return id($d{owner}) . ' owns ' . id($d{selection} => 'atom');
+    }
+
+    if ($name eq 'SendEvent') {
+        return 'to ' . id($d{destination});
     }
 
     undef
