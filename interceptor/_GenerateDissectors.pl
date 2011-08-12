@@ -434,6 +434,8 @@ sub dissect_event {
   my ($pkt, $ph) = @_;
   my ($type, $format, $sequence) = unpack("ccS", $pkt);
   my $m = {};
+
+  $type &= 0x7F;
 eot
 
     for my $rep ($xml->root->children('event')) {
