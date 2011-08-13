@@ -9,14 +9,30 @@ use warnings;
 use Data::Dumper;
 use XML::Twig;
 use List::Util qw(sum);
+use File::Basename;
 use v5.10;
 
 say "reading in XML";
 
 $Data::Dumper::Maxdepth = 2;
 
-my $xml = XML::Twig->new();
-$xml->parsefile('/usr/share/xcb/xproto.xml');
+# TODO: handle all extensions
+my $xproto_xml = XML::Twig->new();
+$xproto_xml->parsefile('/usr/share/xcb/xproto.xml');
+
+my $randr_xml = XML::Twig->new();
+$randr_xml->parsefile('/usr/share/xcb/randr.xml');
+
+# we replace the <import> nodes with the type elements
+for my $xml ($xproto_xml, $randr_xml) {
+    for my $import ($xml->root->get_xpath('import')) {
+        my $twig = XML::Twig->new;
+        $twig->parsefile('/usr/share/xcb/' . $import->text . '.xml');
+        my @d = $twig->root->descendants(qr/(enum|struct)/);
+        map { $_->cut } @d;
+        $import->replace_with(@d);
+    }
+}
 
 sub field_size {
     my ($type) = @_;
