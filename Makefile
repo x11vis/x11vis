@@ -15,6 +15,8 @@ install: gen
 	$(INSTALL) -d -m 0755 $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor
 	$(INSTALL) -d -m 0755 $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/lib
 	$(INSTALL) -d -m 0755 $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/gen
+	$(INSTALL) -d -m 0755 $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/gen/RequestDissector
+	$(INSTALL) -d -m 0755 $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/gen/ReplyDissector
 	$(INSTALL) -m 0755 bin/x11vis $(DESTDIR)$(PREFIX)/bin/x11vis
 	$(INSTALL) -m 0755 gui/*.js $(DESTDIR)$(PREFIX)/lib/x11vis/gui/
 	$(INSTALL) -m 0755 gui/*.gif $(DESTDIR)$(PREFIX)/lib/x11vis/gui/
@@ -24,6 +26,8 @@ install: gen
 	$(INSTALL) -m 0755 interceptor/interceptor.pl $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/
 	$(INSTALL) -m 0644 interceptor/lib/*.pm $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/lib/
 	$(INSTALL) -m 0644 interceptor/gen/*.pm $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/gen/
+	$(INSTALL) -m 0644 interceptor/gen/RequestDissector/*.pm $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/gen/RequestDissector/
+	$(INSTALL) -m 0644 interceptor/gen/ReplyDissector/*.pm $(DESTDIR)$(PREFIX)/lib/x11vis/interceptor/gen/ReplyDissector/
 	$(INSTALL) -m 0644 interceptor/gen/*.json $(DESTDIR)$(PREFIX)/lib/x11vis/gui/gen/
 
 all: gen
