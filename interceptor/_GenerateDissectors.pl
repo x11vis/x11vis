@@ -37,11 +37,11 @@ for my $xml ($xproto_xml, $randr_xml) {
 sub field_size {
     my ($type) = @_;
 
-    my @xids = qw(WINDOW DRAWABLE ATOM PIXMAP CURSOR FONT GCONTEXT COLORMAP FONTABLE KEYSYM);
+    my @xids = qw(WINDOW DRAWABLE ATOM PIXMAP CURSOR FONT GCONTEXT COLORMAP FONTABLE KEYSYM MODE CRTC OUTPUT);
     if ($type ~~ @xids || $type eq 'CARD32' || $type eq 'VISUALID' || $type eq 'TIMESTAMP') {
         return (L => 4);
     }
-    if ($type eq 'INT32') {
+    if ($type eq 'INT32' || $type eq 'FIXED') {
         return (l => 4);
     }
     if ($type eq 'INT16') {
@@ -65,7 +65,7 @@ sub field_size {
 # returns the amount of bytes which were handled
 #
 sub dissect_element {
-    my ($fh, $reqname, $prefix, $cnt, $el) = @_;
+    my ($fh, $xml, $reqname, $prefix, $cnt, $el) = @_;
 
     return $el->att('bytes') if $el->tag eq 'pad';
 
@@ -98,7 +98,7 @@ sub dissect_element {
         if (defined($struct)) {
             my $bytes = $cnt;
             for my $child ($struct->children) {
-                $bytes += dissect_element($fh, $reqname, $prefix . $name . '}->{', $bytes, $child);
+                $bytes += dissect_element($fh, $xml, $reqname, $prefix . $name . '}->{', $bytes, $child);
             }
             say $fh '';
             return ($bytes - $cnt);
@@ -153,7 +153,11 @@ sub dissect_element {
             if ($len eq '$length') {
             say $fh "    my \$_listlen = \$length / $bytes;";
             } else {
+                if (substr("$len", 0, 1) eq '#') {
+            say $fh "    my \$_listlen = 0;";
+                } else {
             say $fh "    my \$_listlen = $len;";
+                }
             }
             say $fh "    my \$$listname = substr(\$pkt, $cnt, \$_listlen * $bytes);";
             say $fh "    my \@c;";
@@ -174,7 +178,7 @@ sub dissect_element {
 
             my $bytes = 0;
             for my $child ($struct->children) {
-                my $size = dissect_element($fh, $reqname, '#', $bytes, $child);
+                my $size = dissect_element($fh, $xml, $reqname, '#', $bytes, $child);
                 if ($size =~ /^[0-9]+$/) {
                     $bytes += $size;
                 }
@@ -190,7 +194,7 @@ sub dissect_element {
             say $fh "    for (my \$c = 0; \$c < \$_listlen; \$c++) {";
             say $fh "      my \$_part = {};";
             for my $child ($struct->children) {
-                my $size = dissect_element($fh, $reqname, '$_part->{', "\$_cnt", $child);
+                my $size = dissect_element($fh, $xml, $reqname, '$_part->{', "\$_cnt", $child);
                 say $fh " \$_cnt += $size;";
             }
             say $fh "      push \@c, \$_part;";
@@ -239,7 +243,7 @@ sub dissect_element {
         }
         return $cnt;
     }
-    die "Unhandled element " . $el->tag . " in req $reqname with name " . $el->att('name');
+    warn "Unhandled element " . $el->tag . " in req $reqname with name " . $el->att('name');
 }
 
 sub expr {
@@ -267,42 +271,45 @@ exit 0;
 
 # XXX: well, this is not using 'expressions' correctly, only caring for value and bit tags
 sub generate_helper {
+    my ($xmls) = @_;
     open my $fh, '>', 'gen/DissectorHelper.pm';
     say $fh 'package DissectorHelper;';
     say $fh 'use Moose;';
     say $fh '';
 
-    for my $enum ($xml->root->children('enum')) {
-        my $name = $enum->att('name');
-        say $fh "sub enum_${name}_value_to_strings {";
-        say $fh '  my ($value) = @_;';
-        say $fh '  my @retvals;';
-        my $is_bitmask = 0;
-        for my $item ($enum->children('item')) {
-            my $iname = $item->att('name');
-            for my $child ($item->children) {
-                next if ($child->tag eq '#PCDATA');
-                if ($child->tag eq 'value') {
-                    say $fh '  if ($value == ' . $child->text . ') {';
-                    say $fh "    return '$iname';";
-                    say $fh '  }';
-                } elsif ($child->tag eq 'bit') {
-                    say $fh '  if (($value & (1 << ' . $child->text . '))) {';
-                    say $fh "    push \@retvals, '$iname';";
-                    say $fh '  }';
-                    $is_bitmask = 1;
-                } else {
-                    say "unhandled enum child: " . $child->tag . " in enum $name";
-                    die 1;
+    for my $xml (@$xmls) {
+        for my $enum ($xml->root->children('enum')) {
+            my $name = $enum->att('name');
+            say $fh "sub enum_${name}_value_to_strings {";
+            say $fh '  my ($value) = @_;';
+            say $fh '  my @retvals;';
+            my $is_bitmask = 0;
+            for my $item ($enum->children('item')) {
+                my $iname = $item->att('name');
+                for my $child ($item->children) {
+                    next if ($child->tag eq '#PCDATA');
+                    if ($child->tag eq 'value') {
+                        say $fh '  if ($value == ' . $child->text . ') {';
+                        say $fh "    return '$iname';";
+                        say $fh '  }';
+                    } elsif ($child->tag eq 'bit') {
+                        say $fh '  if (($value & (1 << ' . $child->text . '))) {';
+                        say $fh "    push \@retvals, '$iname';";
+                        say $fh '  }';
+                        $is_bitmask = 1;
+                    } else {
+                        say "unhandled enum child: " . $child->tag . " in enum $name";
+                        die 1;
+                    }
                 }
             }
+            if ($is_bitmask) {
+                say $fh '  return \@retvals;';
+            } else {
+                say $fh '  return undef;';
+            }
+            say $fh "}";
         }
-        if ($is_bitmask) {
-            say $fh '  return \@retvals;';
-        } else {
-            say $fh '  return undef;';
-        }
-        say $fh "}";
     }
     say $fh '1;';
     close $fh;
@@ -326,7 +333,7 @@ sub dissect_request {
   my $m = {};
 eot
 
-    for my $req ($xml->root->children('request')) {
+    for my $req ($xproto_xml->root->children('request')) {
         my $opcode = $req->att('opcode');
         my $reqname = $req->att('name');
         say "Handling opcode $opcode ($reqname)";
@@ -341,14 +348,14 @@ eot
         my $first = shift @children;
 
         # dissect the first field, if there is one at all
-        dissect_element($fh, $reqname, '$m->{', 1, $first) if defined($first);
+        dissect_element($fh, $xproto_xml, $reqname, '$m->{', 1, $first) if defined($first);
 
         # skip the length-field
         my $cnt = 4;
 
         # iterate through the remaining children
         for my $child (@children) {
-            my $size = dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            my $size = dissect_element($fh, $xproto_xml, $reqname, '$m->{', $cnt, $child);
             if ($size =~ /^[0-9]+$/) {
                 $cnt += $size;
             }
@@ -362,6 +369,66 @@ eot
     }
 
     say $fh <<eot;
+  undef
+}
+
+__PACKAGE__->meta->make_immutable;
+
+1;
+eot
+}
+
+sub generate_randr_requests {
+    # write header
+    open my $fh, '>', 'gen/RequestDissector/RANDR.pm';
+    say $fh <<'eot';
+package RequestDissector::RANDR;
+use Moose;
+use DissectorHelper;
+
+sub dissect_request {
+  my ($pkt) = @_;
+  my ($opcode, $subreq, $length) = unpack("CCS", $pkt);
+  $length *= 4;
+  my $data = {
+      opcode => $opcode,
+      subreq => $subreq,
+  };
+  my $m = {};
+eot
+
+    for my $req ($randr_xml->root->children('request')) {
+        my $opcode = $req->att('opcode');
+        my $reqname = $req->att('name');
+        say "Handling opcode $opcode ($reqname)";
+
+        say $fh <<"eot";
+  # $reqname
+  if (\$subreq == $opcode) {
+      \$data->{name} = "RANDR:$reqname";
+eot
+
+        my @children = $req->children;
+        # skip the length-field
+        my $cnt = 4;
+
+        # iterate through the remaining children
+        for my $child (@children) {
+            my $size = dissect_element($fh, $randr_xml, $reqname, '$m->{', $cnt, $child);
+            if ($size =~ /^[0-9]+$/) {
+                $cnt += $size;
+            }
+        }
+
+        say $fh  <<'eot';
+    $data->{moredetails} = $m;
+    return $data;
+  }
+eot
+    }
+
+    say $fh <<eot;
+  undef
 }
 
 __PACKAGE__->meta->make_immutable;
@@ -371,10 +438,78 @@ eot
 }
 
 sub generate_replies {
+    my ($xml) = @_;
     open my $fh, '>', 'gen/ReplyDissector.pm';
     say $fh <<'eot';
 package ReplyDissector;
 use Moose;
+use v5.10;
+
+sub dissect_reply {
+  my ($pkt, $ph) = @_;
+  my ($type, $format, $sequence, $length) = unpack("ccSL", $pkt);
+  $length *= 4;
+  my $m = {};
+  my $data = {
+      seq => $sequence
+  };
+  my $_data = $ph->type_of_reply($sequence);
+  my $name = $_data->{name};
+  $data->{name} = $name;
+eot
+
+    for my $rep ($xml->root->get_xpath('request//reply')) {
+        #say Dumper($req);
+        my $opcode = $rep->parent->att('opcode');
+
+        my $reqname = $rep->parent->att('name');
+        say "Handling opcode $opcode ($reqname)";
+
+        say $fh <<"eot";
+# $reqname
+if (\$name eq \"$reqname\") {
+eot
+
+        my @children = $rep->children;
+        my $first = shift @children;
+
+        # first field goes into the gap
+        dissect_element($fh, $xml, $reqname, '$m->{', 1, $first) if defined($first);
+
+        my $cnt = 8;
+
+        # iterate through the children
+        for my $child (@children) {
+            my $size = dissect_element($fh, $xml, $reqname, '$m->{', $cnt, $child);
+            if ($size =~ /^[0-9]+$/) {
+                $cnt += $size;
+            }
+        }
+
+        say $fh  <<'eot';
+    $data->{moredetails} = $m;
+    return $data;
+  }
+eot
+    }
+
+    say $fh <<'eot';
+  undef
+}
+
+__PACKAGE__->meta->make_immutable;
+
+1
+eot
+}
+
+sub generate_randr_replies {
+    my ($xml) = @_;
+    open my $fh, '>', 'gen/ReplyDissector/RANDR.pm';
+    say $fh <<'eot';
+package ReplyDissector::RANDR;
+use Moose;
+use DissectorHelper;
 use v5.10;
 
 sub dissect_reply {
@@ -404,20 +539,20 @@ eot
 
         say $fh <<"eot";
 # $reqname
-if (\$name eq \"$reqname\") {
+if (\$name eq \"RANDR:$reqname\") {
 eot
 
         my @children = $rep->children;
         my $first = shift @children;
 
         # first field goes into the gap
-        dissect_element($fh, $reqname, '$m->{', 1, $first) if defined($first);
+        dissect_element($fh, $xml, $reqname, '$m->{', 1, $first) if defined($first);
 
         my $cnt = 8;
 
         # iterate through the children
         for my $child (@children) {
-            my $size = dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            my $size = dissect_element($fh, $xml, $reqname, '$m->{', $cnt, $child);
             if ($size =~ /^[0-9]+$/) {
                 $cnt += $size;
             }
@@ -431,6 +566,7 @@ eot
     }
 
     say $fh <<'eot';
+  undef
 }
 
 __PACKAGE__->meta->make_immutable;
@@ -439,7 +575,9 @@ __PACKAGE__->meta->make_immutable;
 eot
 }
 
+
 sub generate_events {
+    my ($xml) = @_;
     open my $fh, '>', 'gen/EventDissector.pm';
     say $fh <<'eot';
 package EventDissector;
@@ -473,13 +611,13 @@ eot
         my $first = shift @children;
 
         # first field goes into the gap
-        dissect_element($fh, $reqname, '$m->{', 1, $first) if defined($first);
+        dissect_element($fh, $xml, $reqname, '$m->{', 1, $first) if defined($first);
 
         my $cnt = 4;
 
         # iterate through the children
         for my $child (@children) {
-            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            $cnt += dissect_element($fh, $xml, $reqname, '$m->{', $cnt, $child);
         }
 
         say $fh  <<'eot';
@@ -490,6 +628,7 @@ eot
     }
 
     say $fh <<'eot';
+  undef
 }
 
 __PACKAGE__->meta->make_immutable;
@@ -499,6 +638,7 @@ eot
 }
 
 sub generate_errors {
+    my ($xml) = @_;
     open my $fh, '>', 'gen/ErrorDissector.pm';
     say $fh <<'eot';
 package ErrorDissector;
@@ -529,7 +669,7 @@ eot
         my $cnt = 4;
         # iterate through the children
         for my $child ($rep->children) {
-            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            $cnt += dissect_element($fh, $xml, $reqname, '$m->{', $cnt, $child);
         }
 
         say $fh  <<'eot';
@@ -558,7 +698,7 @@ eot
         my $cnt = 4;
         # iterate through the children
         for my $child ($rep->children) {
-            $cnt += dissect_element($fh, $reqname, '$m->{', $cnt, $child);
+            $cnt += dissect_element($fh, $xml, $reqname, '$m->{', $cnt, $child);
         }
 
         say $fh  <<'eot';
@@ -570,6 +710,7 @@ eot
 
 
     say $fh <<'eot';
+  undef
 }
 
 __PACKAGE__->meta->make_immutable;
@@ -579,19 +720,25 @@ eot
 }
 
 say "--- GENERATING HELPER ---";
-generate_helper();
+generate_helper([$randr_xml]);
 
 say "--- GENERATING REQUESTS ---";
 generate_requests();
 say "";
+say "--- GENERATING RandR REQUESTS ---";
+generate_randr_requests();
+say "";
 say "--- GENERATING REPLIES";
 say "";
-generate_replies();
+generate_replies($xproto_xml);
+say "--- GENERATING RandR REQUESTS ---";
+generate_randr_replies($randr_xml);
+say "";
 say "";
 say "--- GENERATING EVENTS";
 say "";
-generate_events();
+generate_events($xproto_xml);
 say '';
 say '--- GENERATING ERRORS';
 say '';
-generate_errors();
+generate_errors($xproto_xml);
