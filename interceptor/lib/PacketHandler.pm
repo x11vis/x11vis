@@ -18,11 +18,14 @@ use Burst;
 use FindBin;
 use lib "$FindBin::RealBin/gen/";
 use RequestDissector;
+use RequestDissector::RANDR;
 use ReplyDissector;
+use ReplyDissector::RANDR;
 use EventDissector;
 use ErrorDissector;
 use Mappings;
 use FileOutput;
+use Extension;
 use v5.10;
 
 with 'Elapsed';
@@ -39,6 +42,16 @@ has 'x_ids' => (
         add_mapping => 'set',
         id_for_xid => 'get',
         xid_known => 'exists'
+    }
+);
+
+has '_extensions' => (
+    traits => [ 'Array' ],
+    is => 'rw',
+    isa => 'ArrayRef[Extension]',
+    handles => {
+        add_extension => 'push',
+        extensions => 'elements',
     }
 );
 
@@ -94,6 +107,23 @@ sub dump_reply {
     $data->{type} = 'reply';
     $data->{elapsed} = $self->elapsed;
     $self->x11_burst->add_packet(encode_json($data));
+
+    # handle X extensions
+    if ($data->{name} eq 'QueryExtension' &&
+        $data->{moredetails}->{present} == 1) {
+        my %d = %{$data->{moredetails}};
+        my $req_data = $self->type_of_reply($data->{seq});
+        my %rd = %{$req_data->{moredetails}};
+
+        my $ext = Extension->new(
+            name => $rd{name},
+            opcode => $d{major_opcode},
+            first_error => $d{first_error},
+            first_event => $d{first_event}
+        );
+        say "ext = " . Dumper($ext);
+        $self->add_extension($ext);
+    }
 }
 
 sub dump_event {
@@ -537,11 +567,23 @@ sub event_icing {
 sub handle_request {
     my ($self, $request) = @_;
 
-    my ($opcode) = unpack('c', $request);
+    my ($opcode, $subreq) = unpack('CC', $request);
 
     say "Handling request opcode $opcode";
 
     my $data = RequestDissector::dissect_request($request);
+    if (!defined($data)) {
+        my ($ext) = grep { $_->opcode == $opcode } $self->extensions;
+        if (defined($ext)) {
+            say "ext = " . $ext->name;
+            # XXX: generate name
+            if ($ext->name eq 'RANDR') {
+                say "subreq = $subreq";
+                $data = RequestDissector::RANDR::dissect_request($request);
+                say "now = " . Dumper($data);
+            }
+        }
+    }
     if (defined($data) && length($data) > 5) {
         # add the icing to the cake
         my $details = $self->request_icing($data);
@@ -575,9 +617,23 @@ sub handle_error {
 sub handle_reply {
     my ($self, $reply) = @_;
 
-    say "Should dump a reply with length ". length($reply);
+    my ($sequence) = unpack("xxS", $reply);
+    if (!$self->awaiting_reply($sequence)) {
+        say "Received an unexpected reply?!";
+        return;
+    }
 
-    my $data = ReplyDissector::dissect_reply($reply, $self);
+    my $_data = $self->type_of_reply($sequence);
+
+    say "Received reply for " . $_data->{name} . " with length " . length($reply);
+
+    my $data;
+    if ($_data->{name} =~ /^RANDR:/) {
+        $data = ReplyDissector::RANDR::dissect_reply($reply, $self);
+    } else {
+        # Generic reply dissector
+        $data = ReplyDissector::dissect_reply($reply, $self);
+    }
     if (defined($data) && length($data) > 5) {
         #say "data = " . Dumper($data);
         ## add the icing to the cake
