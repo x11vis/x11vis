@@ -21,7 +21,9 @@ x11vis = (function() {
         var result = '';
         $.each(obj, function(key, val) {
             var formatted_value;
-            if (typeof(val) === 'object') {
+            if (val === null) {
+                formatted_value = "";
+            } else if (typeof(val) === 'object') {
                 formatted_value = detail_obj_to_html(val, indent + 1);
             } else {
                 formatted_value = val;
