@@ -68,13 +68,15 @@ sub start_interceptor {
     tcp_connect 'unix/', '/tmp/x11vis.sock', sub { $cv->send(!!$_[0]) };
     return if $cv->recv;
 
-    say "need to start the interceptor";
+    say "Interceptor not started yet, starting it...";
     my $prefix = "$FindBin::RealBin";
     say "Trying $prefix/../lib/x11vis/interceptor/interceptor.pl";
     my $pid;
     if (($pid = fork())) {
-        say "parent, not doing anything";
+        # parent process, continue.
     } elsif (defined($pid)) {
+        # child process, close outputs (as they can be loud) and start 
+        # interceptor.
         close(STDIN);
         close(STDOUT);
         close(STDERR);
