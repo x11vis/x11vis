@@ -76,10 +76,10 @@ sub start_interceptor {
         # parent process, continue.
     } elsif (defined($pid)) {
         # child process, close outputs (as they can be loud) and start 
-        # interceptor.
+        # interceptor. STDERR remains open because errors might be 
+        # interesting.
         close(STDIN);
         close(STDOUT);
-        close(STDERR);
         exec "$prefix/../lib/x11vis/interceptor/interceptor.pl";
     } elsif ($! == EAGAIN) {
 # TODO
