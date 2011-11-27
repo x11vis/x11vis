@@ -43,6 +43,7 @@ my %prefixes = (
     font => 'f',
     gcontext => 'g',
     cursor => 'c',
+    no_class => 'n',
 );
 
 my %counters = ();
@@ -55,6 +56,7 @@ sub id_for {
 
     if (!defined($class)) {
         warn "class not given but ID unknown!";
+        $class = 'no_class';
     }
 
     # We need to create a new mapping
