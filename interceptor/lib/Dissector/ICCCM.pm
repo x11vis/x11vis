@@ -57,7 +57,7 @@ sub dissect_wm_size_hints {
     return %result;
 }
 
-sub decode_wm_size_hints($) {
+sub decode_wm_size_hints {
     my %sizehints = dissect_wm_size_hints(shift);
     my @hints;
     for my $component (keys %sizehints) {
