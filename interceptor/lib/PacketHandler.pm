@@ -251,6 +251,63 @@ sub reply_icing {
     undef;
 }
 
+my $sizeHintsUSPosition	 = 1 << 0;	# user specified x, y 
+my $sizeHintsUSSize      = 1 << 1;	# user specified width, height 
+my $sizeHintsPPosition   = 1 << 2;	# program specified position 
+my $sizeHintsPSize       = 1 << 3;	# program specified size 
+my $sizeHintsPMinSize    = 1 << 4;	# program specified minimum size 
+my $sizeHintsPMaxSize    = 1 << 5;	# program specified maximum size 
+my $sizeHintsPResizeInc  = 1 << 6;	# program specified resize increments 
+my $sizeHintsPAspect     = 1 << 7;	# program specified min and max aspect ratios 
+my $sizeHintsPBaseSize   = 1 << 8;
+my $sizeHintsPWinGravity = 1 << 9;
+
+sub dissect_sizehints($) {
+    my @fields = unpack("LLLLLLLLLLLLLLLL", shift);
+    my $flags = $fields[0];
+    my %result;
+    if ($flags & $sizeHintsUSPosition) {
+        $result{USPosition} = "($fields[1], $fields[2])";
+    }
+    if ($flags & $sizeHintsUSSize) {
+        $result{USSize} = "$fields[3] x $fields[4]";
+    }
+    if ($flags & $sizeHintsPPosition) {
+        $result{PPosition} = "($fields[1], $fields[2])";
+    }
+    if ($flags & $sizeHintsPSize) {
+        $result{PSize} = "$fields[3] x $fields[4]";
+    }
+    if ($flags & $sizeHintsPMinSize) {
+        $result{PMinSize} = "$fields[5] x $fields[6]";
+    }
+    if ($flags & $sizeHintsPMaxSize) {
+        $result{PMaxSize} = "$fields[7] x $fields[8]";
+    }
+    if ($flags & $sizeHintsPResizeInc) {
+        $result{PResizeInc} = "$fields[9] x $fields[10]";
+    }
+    if ($flags & $sizeHintsPAspect) {
+        $result{PAspect} = "$fields[11] : $fields[12]";
+    }
+    if ($flags & $sizeHintsPBaseSize) {
+        $result{PBaseSize} = "$fields[13] x $fields[14]";
+    }
+    if ($flags & $sizeHintsPWinGravity) {
+        $result{PWinGravity} = $fields[15];
+    }
+    return %result;
+}
+
+sub decode_sizehints($) {
+    my %sizehints = dissect_sizehints(shift);
+    my @hints;
+    for my $component (keys %sizehints) {
+      push @hints, "$component: $sizehints{$component}";
+    }
+    return join ', ', @hints;
+}
+ 
 sub request_icing {
     my ($self, $data) = @_;
 
@@ -432,8 +489,8 @@ sub request_icing {
 
     if ($name eq 'ChangeProperty') {
         my $win = $mappings->id_for($d{window}, 'window');
-        my $atom = $mappings->get_atom_xid('WM_NAME');
-        if (defined($atom) && $atom == $d{property}) {
+        my $name_atom = $mappings->get_atom_xid('WM_NAME');
+        if (defined($name_atom) && $name_atom == $d{property}) {
             $self->dump_cleverness({
                 id => $win,
                 title => $d{data},
@@ -443,7 +500,12 @@ sub request_icing {
                 }
             });
         }
-        return id($d{property} => 'atom') . " on %$win%";
+        my $normal_hints_atom = $mappings->get_atom_xid('WM_NORMAL_HINTS');
+        if (defined($normal_hints_atom) && $normal_hints_atom == $d{property}) {
+            return id($d{property} => 'atom') . " on %$win%: " . decode_sizehints($d{data});
+        } else {
+            return id($d{property} => 'atom') . " on %$win%";
+        }
     }
 
     if ($name eq 'FreePixmap') {
@@ -559,6 +621,7 @@ sub event_icing {
         return id($d{window} => 'window');
     }
 
+    # TODO: ButtonPress
     # TODO: MotionNotify
 
     undef
