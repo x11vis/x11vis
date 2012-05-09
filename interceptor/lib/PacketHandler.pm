@@ -156,9 +156,10 @@ sub id {
     return '%' . $mappings->id_for(@_) . '%';
 }
 
+# shortcut which turns an array of ID's into a string of comma-seperated, 
+# formatted ID's
 sub ids {
-    my @atoms = unpack('L' x shift, shift);
-    return join(', ', map { id($_) } @atoms);
+    return join(', ', map { id($_) } shift);
 }
 
 sub reply_icing {
@@ -456,7 +457,7 @@ sub request_icing {
         } 
         my $wm_state_atom = $mappings->get_atom_xid('_NET_WM_STATE');
         if (defined($wm_state_atom) && $wm_state_atom == $d{property}) {
-            return id($d{property} => 'atom') . " on %$win%: " . ids($d{data_len}, $d{data});
+            return id($d{property} => 'atom') . " on %$win%: " . ids(unpack('L' x $d{data_len}, $d{data}));
         }
         return id($d{property} => 'atom') . " on %$win%";
     }
