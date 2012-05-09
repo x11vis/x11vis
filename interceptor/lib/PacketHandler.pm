@@ -156,6 +156,11 @@ sub id {
     return '%' . $mappings->id_for(@_) . '%';
 }
 
+sub ids {
+    my @atoms = unpack('L' x shift, shift);
+    return join(', ', map { id($_) } @atoms);
+}
+
 sub reply_icing {
     my ($self, $data) = @_;
 
@@ -448,9 +453,12 @@ sub request_icing {
         my $normal_hints_atom = $mappings->get_atom_xid('WM_NORMAL_HINTS');
         if (defined($normal_hints_atom) && $normal_hints_atom == $d{property}) {
             return id($d{property} => 'atom') . " on %$win%: " . Dissector::ICCCM::decode_wm_size_hints($d{data});
-        } else {
-            return id($d{property} => 'atom') . " on %$win%";
+        } 
+        my $wm_state_atom = $mappings->get_atom_xid('_NET_WM_STATE');
+        if (defined($wm_state_atom) && $wm_state_atom == $d{property}) {
+            return id($d{property} => 'atom') . " on %$win%: " . ids($d{data_len}, $d{data});
         }
+        return id($d{property} => 'atom') . " on %$win%";
     }
 
     if ($name eq 'FreePixmap') {
