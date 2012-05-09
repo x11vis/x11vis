@@ -132,5 +132,6 @@ my $app = sub {
 };
 
 $twiggy->register_service($app);
+warn "(http) bound to $$twiggy{host}, port $$twiggy{port}\n";
 
 AE->cv->recv
