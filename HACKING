@@ -1,0 +1,7 @@
+== New icing ==
+
+The 'icing' is the one-line summary of the message.
+
+If you'd like to add/improve the summaries for various kinds of messages, look
+in the 'reply_icing', 'request_icing' and 'event_icing' functions of 
+PacketHandler.pm to improve the presentation of replies, requests or events.
