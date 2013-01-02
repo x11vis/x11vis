@@ -206,6 +206,10 @@ sub reply_icing {
         return id($rd{drawable}) . " ($d{x}, $d{y}) $d{width} x $d{height}";
     }
 
+    if ($name eq 'GetSelectionOwner') {
+        return id($d{owner} => 'window');
+    }
+
     if ($name eq 'TranslateCoordinates') {
         return "($d{dst_x}, $d{dst_y}) on " . id($rd{dst_window});
     }
@@ -289,6 +293,10 @@ sub request_icing {
     if ($name eq 'GrabKey') {
         # TODO: modifier human readable
         return "$d{key} on " . id($d{grab_window} => 'window');
+    }
+
+    if ($name eq 'GrabServer' || $name eq 'UngrabServer') {
+        return "";
     }
 
     if ($name eq 'GrabButton') {
@@ -572,6 +580,10 @@ sub event_icing {
     }
 
     if ($name eq 'UnmapNotify') {
+        return id($d{window} => 'window');
+    }
+
+    if ($name eq 'DestroyNotify') {
         return id($d{window} => 'window');
     }
 
