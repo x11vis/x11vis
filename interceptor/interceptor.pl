@@ -18,6 +18,7 @@ use Web;
 use IO::Handle;
 use IO::All;
 use JSON::XS;
+use Getopt::Long qw(GetOptions);
 use v5.10;
 
 #
@@ -72,11 +73,21 @@ sub endpoint_cmdline {
 #    warn "bound to $thishost, port $thisport\n";
 #};
 
+my $server_ip = '127.0.0.1';
+my $server_port = '6000';
+GetOptions("display=s" => sub {
+	       if ($_[1] !~ m{^(.*):(\d+(?:\.\d+)?)$}) {
+		   die "Cannot parse '$_[1]', use something like 127.0.0.1:0\n";
+	       }
+	       $server_ip = $1;
+	       $server_port = 6000 + $2;
+	   })
+    or die "usage: $0 [--display=host:port]\n";
 
 my $conn_id = 0;
 
 # We need to use TCP so that we can do a remote endpoint lookup
-my $tcp_server = tcp_server "127.0.0.1", "6000", sub {
+my $tcp_server = tcp_server $server_ip, $server_port, sub {
     my ($fh, $host, $port) = @_;
 
     my $cmdline = endpoint_cmdline($fh);
