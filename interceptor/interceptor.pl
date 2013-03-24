@@ -29,28 +29,30 @@ use v5.10;
 sub endpoint_cmdline {
     my ($fh) = @_;
 
-    my ($port, $addr) = sockaddr_in(getpeername($fh));
-    my @bytes = unpack('C4', $addr);
-    my $remote = sprintf("%02X%02X%02X%02X:%04X",
-        $bytes[3], $bytes[2], $bytes[1], $bytes[0], $port);
+    if (-e '/proc/net/tcp') { # a Linuxism
+	my ($port, $addr) = sockaddr_in(getpeername($fh));
+	my @bytes = unpack('C4', $addr);
+	my $remote = sprintf("%02X%02X%02X%02X:%04X",
+            $bytes[3], $bytes[2], $bytes[1], $bytes[0], $port);
 
-    # get the info line from /proc/net/tcp for the remote endpoint
-    my ($info) = grep { /^\s+[^:]+: \b$remote\b/ } io('/proc/net/tcp')->slurp;
+	# get the info line from /proc/net/tcp for the remote endpoint
+	my ($info) = grep { /^\s+[^:]+: \b$remote\b/ } io('/proc/net/tcp')->slurp;
 
-    # extract the inode of the remote endpoint
-    $info =~ s/^\s+//g;
-    $info =~ s/\s+/ /g;
-    my $remote_inode = (split(/ /, $info))[9];
+	# extract the inode of the remote endpoint
+	$info =~ s/^\s+//g;
+	$info =~ s/\s+/ /g;
+	my $remote_inode = (split(/ /, $info))[9];
 
-    # find the corresponding process which has a link to this inode
-    for (</proc/*/fd/*>) {
-        my $target = readlink or next;
-        next unless $target =~ /^socket:\[$remote_inode\]$/;
-        my ($pid) = ($_ =~ m,/proc/([0-9]+)/,);
-        # return its commandline
-        my $cmdline = io("/proc/$pid/cmdline")->slurp;
-        $cmdline =~ s/\0/ /g;
-        return $cmdline;
+	# find the corresponding process which has a link to this inode
+	for (</proc/*/fd/*>) {
+	    my $target = readlink or next;
+	    next unless $target =~ /^socket:\[$remote_inode\]$/;
+	    my ($pid) = ($_ =~ m,/proc/([0-9]+)/,);
+	    # return its commandline
+	    my $cmdline = io("/proc/$pid/cmdline")->slurp;
+	    $cmdline =~ s/\0/ /g;
+	    return $cmdline;
+	}
     }
 
     return '<fd ' . $fh->fileno . '>';
