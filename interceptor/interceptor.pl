@@ -18,6 +18,7 @@ use Web;
 use IO::Handle;
 use IO::All;
 use JSON::XS;
+use Getopt::Long qw(GetOptions);
 use v5.10;
 
 #
@@ -28,28 +29,30 @@ use v5.10;
 sub endpoint_cmdline {
     my ($fh) = @_;
 
-    my ($port, $addr) = sockaddr_in(getpeername($fh));
-    my @bytes = unpack('C4', $addr);
-    my $remote = sprintf("%02X%02X%02X%02X:%04X",
-        $bytes[3], $bytes[2], $bytes[1], $bytes[0], $port);
+    if (-e '/proc/net/tcp') { # a Linuxism
+	my ($port, $addr) = sockaddr_in(getpeername($fh));
+	my @bytes = unpack('C4', $addr);
+	my $remote = sprintf("%02X%02X%02X%02X:%04X",
+            $bytes[3], $bytes[2], $bytes[1], $bytes[0], $port);
 
-    # get the info line from /proc/net/tcp for the remote endpoint
-    my ($info) = grep { /^\s+[^:]+: \b$remote\b/ } io('/proc/net/tcp')->slurp;
+	# get the info line from /proc/net/tcp for the remote endpoint
+	my ($info) = grep { /^\s+[^:]+: \b$remote\b/ } io('/proc/net/tcp')->slurp;
 
-    # extract the inode of the remote endpoint
-    $info =~ s/^\s+//g;
-    $info =~ s/\s+/ /g;
-    my $remote_inode = (split(/ /, $info))[9];
+	# extract the inode of the remote endpoint
+	$info =~ s/^\s+//g;
+	$info =~ s/\s+/ /g;
+	my $remote_inode = (split(/ /, $info))[9];
 
-    # find the corresponding process which has a link to this inode
-    for (</proc/*/fd/*>) {
-        my $target = readlink or next;
-        next unless $target =~ /^socket:\[$remote_inode\]$/;
-        my ($pid) = ($_ =~ m,/proc/([0-9]+)/,);
-        # return its commandline
-        my $cmdline = io("/proc/$pid/cmdline")->slurp;
-        $cmdline =~ s/\0/ /g;
-        return $cmdline;
+	# find the corresponding process which has a link to this inode
+	for (</proc/*/fd/*>) {
+	    my $target = readlink or next;
+	    next unless $target =~ /^socket:\[$remote_inode\]$/;
+	    my ($pid) = ($_ =~ m,/proc/([0-9]+)/,);
+	    # return its commandline
+	    my $cmdline = io("/proc/$pid/cmdline")->slurp;
+	    $cmdline =~ s/\0/ /g;
+	    return $cmdline;
+	}
     }
 
     return '<fd ' . $fh->fileno . '>';
@@ -72,11 +75,21 @@ sub endpoint_cmdline {
 #    warn "bound to $thishost, port $thisport\n";
 #};
 
+my $server_ip = '127.0.0.1';
+my $server_port = '6000';
+GetOptions("display=s" => sub {
+	       if ($_[1] !~ m{^(.*):(\d+(?:\.\d+)?)$}) {
+		   die "Cannot parse '$_[1]', use something like 127.0.0.1:0\n";
+	       }
+	       $server_ip = $1;
+	       $server_port = 6000 + $2;
+	   })
+    or die "usage: $0 [--display=host:port]\n";
 
 my $conn_id = 0;
 
 # We need to use TCP so that we can do a remote endpoint lookup
-my $tcp_server = tcp_server "127.0.0.1", "6000", sub {
+my $tcp_server = tcp_server $server_ip, $server_port, sub {
     my ($fh, $host, $port) = @_;
 
     my $cmdline = endpoint_cmdline($fh);
