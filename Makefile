@@ -1,9 +1,9 @@
-PREFIX=/usr
+PREFIX?=/usr
 INSTALL=install
 
 gen:
 	echo 'generating dissectors/atoms'
-	cd interceptor && (mkdir gen; mkdir gen/RequestDissector; mkdir gen/ReplyDissector; perl _GenerateDissectors.pl && perl _PredefineAtoms.pl)
+	cd interceptor && (mkdir gen; mkdir gen/RequestDissector; mkdir gen/ReplyDissector; perl _GenerateDissectors.pl --prefix=$(PREFIX) && perl _PredefineAtoms.pl)
 
 install: gen
 	echo 'install!'

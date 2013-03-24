@@ -7,6 +7,7 @@
 use strict;
 use warnings;
 use Data::Dumper;
+use Getopt::Long qw(GetOptions);
 use XML::Twig;
 use List::Util qw(sum);
 use File::Basename;
@@ -16,18 +17,22 @@ say "reading in XML";
 
 $Data::Dumper::Maxdepth = 2;
 
+my $prefix = "/usr";
+GetOptions("prefix=s" => \$prefix)
+    or die "usage: $0 [--prefix=...]\n";
+
 # TODO: handle all extensions
 my $xproto_xml = XML::Twig->new();
-$xproto_xml->parsefile('/usr/share/xcb/xproto.xml');
+$xproto_xml->parsefile("$prefix/share/xcb/xproto.xml");
 
 my $randr_xml = XML::Twig->new();
-$randr_xml->parsefile('/usr/share/xcb/randr.xml');
+$randr_xml->parsefile("$prefix/share/xcb/randr.xml");
 
 # we replace the <import> nodes with the type elements
 for my $xml ($xproto_xml, $randr_xml) {
     for my $import ($xml->root->get_xpath('import')) {
         my $twig = XML::Twig->new;
-        $twig->parsefile('/usr/share/xcb/' . $import->text . '.xml');
+        $twig->parsefile("$prefix/share/xcb/" . $import->text . '.xml');
         my @d = $twig->root->descendants(qr/(enum|struct)/);
         map { $_->cut } @d;
         $import->replace_with(@d);
