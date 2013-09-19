@@ -223,8 +223,8 @@ sub dissect_element {
             ChangeGC => 'GC',
         );
         if (exists $mapping{$reqname}) {
-            my ($enum) = $xml->root->get_xpath('enum[@name="' . $mapping{$reqname} . '"]');
-            for my $item ($enum->children) {
+            my @items = $xml->root->get_xpath('enum[@name="' . $mapping{$reqname} . '"]/item');
+            for my $item (@items) {
                 my ($bit) = $item->children('bit');
                 say $fh "    if ((\$$maskname & (1 << " . $bit->text . "))) {";
                 say $fh "      my \$ex = unpack('$fmt', substr(\$pkt, \$_cnt, 4));";
