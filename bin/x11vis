@@ -118,5 +118,5 @@ start_interceptor;
 
 my $cmdline = join(' ', @ARGV);
 say qq|Interceptor running, now starting "$cmdline"|;
-$ENV{DISPLAY} = '127.0.0.1:0';
+$ENV{DISPLAY} = ':8';
 exec @ARGV;
