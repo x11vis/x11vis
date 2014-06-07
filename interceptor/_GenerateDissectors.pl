@@ -37,7 +37,7 @@ for my $xml ($xproto_xml, $randr_xml) {
 sub field_size {
     my ($type) = @_;
 
-    my @xids = qw(WINDOW DRAWABLE ATOM PIXMAP CURSOR FONT GCONTEXT COLORMAP FONTABLE KEYSYM MODE CRTC OUTPUT);
+    my @xids = qw(WINDOW DRAWABLE ATOM PIXMAP CURSOR FONT GCONTEXT COLORMAP FONTABLE KEYSYM MODE CRTC OUTPUT PROVIDER);
     if ($type ~~ @xids || $type eq 'CARD32' || $type eq 'VISUALID' || $type eq 'TIMESTAMP') {
         return (L => 4);
     }
