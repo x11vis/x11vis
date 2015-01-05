@@ -33,3 +33,7 @@ install: gen
 	$(INSTALL) -m 0644 interceptor/gen/*.json $(DESTDIR)$(PREFIX)/lib/x11vis/gui/gen/
 
 all: gen
+
+.PHONY: clean
+clean:
+	-rm -r interceptor/gen
