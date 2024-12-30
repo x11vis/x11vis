@@ -67,7 +67,12 @@ sub field_size {
 sub dissect_element {
     my ($fh, $xml, $reqname, $prefix, $cnt, $el) = @_;
 
-    return $el->att('bytes') if $el->tag eq 'pad';
+    if ($el->tag eq 'pad') {
+	if ($el->att('bytes') > 0) {
+	    return $el->att('bytes');
+	}
+	return $el->att('align');
+    }
 
     # XXX: do we need to handle that?
     return 0 if $el->tag eq 'reply';
